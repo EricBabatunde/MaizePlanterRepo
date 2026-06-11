@@ -1,0 +1,13 @@
+| **Environment**   | **Proposed Date** | **Test Parameter**   | **Symbol**           | **Unit** | **Measurement Method**                          | **Target Range** | **Measured Value** | **Failsafe Check**   |
+| ----------------- | ----------------- | -------------------- | -------------------- | -------- | ----------------------------------------------- | ---------------- | ------------------ | -------------------- |
+| **Lab Bench**     | 18/05/2026        | Command Latency      | $L_{cmd}$            | ms       | Oscilloscope: Web app request to ESP32 pin high | $< 500$ ms       |                    | Logic-level E-stop   |
+| **Lab Bench**     | 18/05/2026        | Telemetry Rate       | $f_{tel}$            | Hz       | Packet frequency log on Web App interface       | $> 5$ Hz         |                    | Heartbeat loss log   |
+| **Lab Bench**     | 19/05/2026        | Seed Damage Rate     | $D_{seed}$           | %        | Visual inspection of 250 seeds after discharge  | $< 2\%$          |                    | Jamming detection    |
+| **Lab Bench**     | 19/05/2026        | Bench Quality Index  | $I_{qf, bench}$      | %        | 250 drops onto sticky belt (wheels elevated)    | $> 94\%$         |                    | Torque limit monitor |
+| **Calibration**   | 20/05/2026        | Speed Regulation     | $\epsilon_{speed}$   | %        | GPS Doppler vs. commanded PWM on hard ground    | $<\pm 5\%$       |                    | Traction slip check  |
+| **Field Mission** | 22/05/2026        | Waypoint RMSE        | $RMSE_{track}$       | m        | Euclidean distance between GPS waypoints        | $< 0.5$ m        |                    | Boundary geofence    |
+| **Field Mission** | 22/05/2026        | Cross-Track Error    | $CTE$                | m        | Perpendicular distance to planned straight row  | $< 0.3$ m        |                    | Path deviation stop  |
+| **Field Mission** | 22/05/2026        | Heading Error        | $\epsilon_{heading}$ | $^\circ$ | GPS Velocity vector vs. path bearing            | $< 5^\circ$      |                    | Oscillation cutoff   |
+| **Field Mission** | 23/05/2026        | Field Quality Index  | $I_{qf, field}$      | %        | Seed count in 20m furrow post-planting          | $> 90\%$         |                    | Depth sensor alarm   |
+| **Field Mission** | 23/05/2026        | Autonomous Turn Time | $T_{turn}$           | s        | Stopwatch: Entry to alignment for next row      | $< 10$ s         |                    | ICR steering limit   |
+| **Field Mission** | 23/05/2026        | Energy Consumption   | $E_{ha}$             | Wh/ha    | Current sensor log / Total area planted         | Report Baseline  |                    | Low voltage cutoff   |
