@@ -64,8 +64,13 @@ async def plan_mission(request: MissionRequest):
         )
         
         # Package the raw maths into our strict JSON models
+        # formatted_waypoints = [
+        #     Waypoint(row=wp["row"], lat=wp["lat"], lon=wp["lon"]) 
+        #     for wp in raw_waypoints
+        # ]
+
         formatted_waypoints = [
-            Waypoint(row=wp["row"], lat=wp["lat"], lon=wp["lon"]) 
+            Waypoint(row=wp["row"], lat=wp["lat"], lon=wp["lon"], local_x=wp["local_x"], local_y=wp["local_y"]) 
             for wp in raw_waypoints
         ]
         

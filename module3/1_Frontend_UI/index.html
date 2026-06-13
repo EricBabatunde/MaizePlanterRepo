@@ -1,161 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart Automated Maize Planter</title>
+  <title>Autonomous Maize Planter GCS</title>
   <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-  <script>
-    // Apply theme immediately before page renders
-    const savedTheme = localStorage.getItem('appTheme');
-    if (savedTheme === 'light') {
-      document.documentElement.setAttribute('data-theme', 'light');
-      document.body.setAttribute('data-theme', 'light');
-    }
-  </script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
 </head>
+
 <body>
-
-  <!-- Login Page -->
-  <div id="loginContainer" class="login-container">
-    <div class="login-card">
-      <div class="login-header">
-        <div class="login-logo">🌽 MAIZEPRO</div>
-        <h2>Smart Automated Maize Planter</h2>
-        <p>Operational Control Unit</p>
-      </div>
-      <form id="loginForm" class="login-form">
-        <div class="login-form-group">
-          <label for="username">Username:</label>
-          <input type="text" id="username" placeholder="Enter username" required>
-        </div>
-        <button type="submit" class="login-btn">LOGIN</button>
-        <p id="loginError" class="login-error"></p>
-      </form>
-    </div>
-  </div>
-
-  <!-- Main Dashboard (Hidden until login) -->
-  <div id="dashboardContainer" class="dashboard-container" style="display: none;">
-
-
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-top">
-      <div class="sidebar-header">
-        <div class="logo">🌽 <span>MAIZE</span>PRO</div>
-        <button id="closeSidebar" class="close-btn">&times;</button>
-      </div>
-      <nav>
-        <ul>
-          <li class="active">Live Dashboard</li>
-          <li> </li>
-          <li> </li>
-          <li> </li>
-        </ul>
-      </nav>
-    </div>
-    <div class="sidebar-bottom">
-      <button id="themeToggle" class="theme-btn">🌙 Dark Mode</button>
-      <button id="logoutBtn" class="logout-btn">Logout</button>
-    </div>
-  </aside>
-
-
-  <div class="main-wrapper">
-    <header class="top-nav">
-      <button id="menuToggle" class="hamburger">☰</button>
-      <div class="header-text">
-        <h1>Smart Automated Maize Planter</h1>
-        <p>Operational Control Unit | <span id="connection" class="text-green">Online</span></p>
-      </div>
+  <div class="container">
+    <header>
+      <h1>Autonomous Maize Planter</h1>
+      <p>Ground Control Station</p>
     </header>
 
-
-    <main class="dashboard-grid">
-      <section class="card">
-        <h3>System Health</h3>
-        <div class="stat-row">
-          <span>Status:</span>
-          <span id="powerState" class="badge badge-off">IDLE</span>
+    <main>
+      <div class="controls">
+        <h2>Configuration</h2>
+        <div class="input-group">
+          <label for="fieldLength">Field Length (m):</label>
+          <input type="number" id="fieldLength" value="20" min="5" max="100">
         </div>
-        <div class="stat-row">
-          <span>Battery:</span>
-          <div class="battery-bg"><div id="batteryBar" class="battery-fill"></div></div>
-          <small id="batteryLevel">100%</small>
+        <div class="input-group">
+          <label for="fieldWidth">Field Width (m):</label>
+          <input type="number" id="fieldWidth" value="5" min="2" max="50">
         </div>
-        <div class="stat-row">
-          <span>Obstacle:</span>
-          <span id="obstacleState" class="text-green">CLEAR</span>
+        <div class="input-group">
+          <label for="rowSpacing">Row Spacing (m):</label>
+          <input type="number" id="rowSpacing" value="0.6" step="0.1" disabled>
         </div>
-      </section>
-
-
-      <section class="card controls">
-        <h3>Mission Control</h3>
-        <div class="btn-group">
-          <button id="startBtn" class="btn btn-green">START MISSION</button>
-          <button id="stopBtn" class="btn btn-black">EMERGENCY HALT</button>
-          <button id="resetBtn" class="btn btn-reset">RESET SYSTEM</button>
+        <div class="input-group">
+          <label for="initialHeading">Initial Heading (deg):</label>
+          <input type="number" id="initialHeading" value="45" min="0" max="360">
         </div>
-      </section>
+        <button id="startBtn">Generate & Start Mission</button>
+        <button id="resetBtn">Reset</button>
 
-
-      <section class="card">
-        <h3>Field Configuration</h3>
-        <div class="config-form">
-          <div class="form-group">
-            <label for="fieldLength">Field Length (meters):</label>
-            <input type="number" id="fieldLength" placeholder="e.g., 30" min="1" step="0.5" value="10">
-          </div>
-          <div class="form-group">
-            <label for="fieldWidth">Field Width (meters):</label>
-            <input type="number" id="fieldWidth" placeholder="e.g., 20" min="1" step="0.5" value="10">
-          </div>
-          <button id="updateGridBtn" class="btn btn-green">UPDATE GRID</button>
-          <p id="gridInfo" class="grid-info"></p>
+        <div class="status-panel">
+          <h3>Telemetry Status</h3>
+          <p>State: <span id="sysState" class="badge idle">IDLE</span></p>
+          <p>Waypoints: <span id="wpCount">0</span></p>
+          <p>Seeds Dropped: <span id="seedCount">0</span></p>
+          <p>Speed: <span id="telemetrySpeed">0.0</span> m/s</p>
+          <p>Heading: <span id="telemetryHeading">0.0</span>°</p>
         </div>
-      </section>
+      </div>
 
-
-      <section class="card">
-        <h3>Seed Inventory</h3>
-        <div class="big-stats">
-          <div class="stat-item">
-            <span id="plantedCount">0</span>
-            <small>Planted</small>
-          </div>
-          <div class="stat-item">
-            <span id="remainingSeeds">1200</span>
-            <small>Remaining</small>
-          </div>
+      <div class="visualization">
+        <div class="grid-container" id="gridContainer">
+          <div id="planter" class="planter-icon">▼</div>
+          <canvas id="pathCanvas"></canvas>
         </div>
-      </section>
-
-
-      <section class="card full">
-        <h3>Field Coverage (Linear Serpentine Path)</h3>
-        <div id="landMap" class="matrix-grid"></div>
-        <div class="legend">
-          <span><i class="dot gray"></i> Pending</span>
-          <span><i class="dot green"></i> Sown</span>
-          <span><i class="dot red"></i> Obstacle</span>
-        </div>
-      </section>
-
-
-      <section class="card full">
-        <h3>Activity Log</h3>
-        <div class="log-container">
-          <ul id="logs"></ul>
-        </div>
-      </section>
+      </div>
     </main>
   </div>
-
-
-  </div>
-
   <script src="script.js"></script>
 </body>
+
 </html>

@@ -15,7 +15,8 @@ class Waypoint(BaseModel):
     row: int
     lat: float
     lon: float
-    
+    local_x: float  # Add this
+    local_y: float  # Add this
 
 class MissionResponse(BaseModel):
     status: str
