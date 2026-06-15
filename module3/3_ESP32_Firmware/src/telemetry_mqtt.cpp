@@ -61,6 +61,23 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 
         Serial.println("====================================\n");
     }
+    // --- NEW: Handle Live Commands ---
+    else if (String(topic) == "maizepro/command")
+    {
+
+        // We only need a tiny buffer for a simple command
+        DynamicJsonDocument doc(256);
+        deserializeJson(doc, payload, length);
+
+        String command = doc["action"];
+        Serial.print("[MQTT] Received Command: ");
+        Serial.println(command);
+
+        if (command == "ARM_AUTO")
+        {
+            commandArmAndAuto(); // Call the MAVLink function we just wrote!
+        }
+    }
 }
 
 // --- Network Reconnection Logic ---
@@ -80,6 +97,8 @@ void reconnectMQTT()
             Serial.println(" CONNECTED!");
             // Subscribe to the mission topic immediately upon connection
             mqttClient.subscribe("maizepro/mission");
+            // NEW: Subscribe to live commands (Arm/E-Stop)
+            mqttClient.subscribe("maizepro/command");
         }
         else
         {

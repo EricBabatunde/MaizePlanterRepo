@@ -30,5 +30,6 @@ struct NavWaypoint
 void setupMavlink();
 void loopMavlink();
 void startMissionUpload(NavWaypoint *points, uint16_t count);
+void commandArmAndAuto();
 
 #endif // WAYPOINT_MANAGER_H

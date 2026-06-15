@@ -75,6 +75,39 @@ void handleMavlinkMessage(mavlink_message_t *msg)
         }
         break;
     }
+    case MAVLINK_MSG_ID_COMMAND_ACK:
+    {
+        mavlink_command_ack_t ack;
+        mavlink_msg_command_ack_decode(msg, &ack);
+
+        Serial.print("\n[MAVLINK] COMMAND_ACK Received! Command ID: ");
+        Serial.print(ack.command);
+        Serial.print(" | Result: ");
+
+        // Translate the raw number into a readable aerospace result
+        switch (ack.result)
+        {
+        case MAV_RESULT_ACCEPTED:
+            Serial.println("ACCEPTED (0)");
+            break;
+        case MAV_RESULT_TEMPORARILY_REJECTED:
+            Serial.println("TEMPORARILY_REJECTED (1) - Usually a Pre-Arm failure or bad mode.");
+            break;
+        case MAV_RESULT_DENIED:
+            Serial.println("DENIED (2) - Pixhawk refuses this command from this port.");
+            break;
+        case MAV_RESULT_UNSUPPORTED:
+            Serial.println("UNSUPPORTED (3) - Command ID not recognised.");
+            break;
+        case MAV_RESULT_FAILED:
+            Serial.println("FAILED (4) - Command valid, but execution failed.");
+            break;
+        default:
+            Serial.println(ack.result);
+            break;
+        }
+        break;
+    }
         // -----------------------------------
     case MAVLINK_MSG_ID_MISSION_REQUEST_INT:
     case MAVLINK_MSG_ID_MISSION_REQUEST:
@@ -163,4 +196,32 @@ void loopMavlink()
             handleMavlinkMessage(&msg);
         }
     }
+}
+
+// --- 4. Command the Rover to Drive ---
+void commandArmAndAuto()
+{
+    Serial.println("\n[MAVLINK] Executing ARM and AUTO sequence...");
+
+    // Step 1: Send the ARM command (Command ID 400)
+    mavlink_message_t arm_msg;
+    mavlink_msg_command_long_pack(ESP32_SYS_ID, ESP32_COMP_ID, &arm_msg,
+                                  TARGET_SYS_ID, TARGET_COMP_ID,
+                                  MAV_CMD_COMPONENT_ARM_DISARM, 0,
+                                  1.0f, // Param 1: 1 to ARM, 0 to DISARM
+                                  0, 0, 0, 0, 0, 0);
+    sendMavlinkMessage(&arm_msg);
+    Serial.println("[MAVLINK] Sent ARM Command.");
+
+    delay(500); // Give the Pixhawk 500ms to process the arming sequence
+
+    // Step 2: Send the SET_MODE command to enter AUTO mode
+    // Note: In ArduRover, AUTO is Custom Mode 10.
+    mavlink_message_t mode_msg;
+    mavlink_msg_set_mode_pack(ESP32_SYS_ID, ESP32_COMP_ID, &mode_msg,
+                              TARGET_SYS_ID,
+                              MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                              10); // 10 = ArduRover AUTO mode
+    sendMavlinkMessage(&mode_msg);
+    Serial.println("[MAVLINK] Sent AUTO Mode Command.\n");
 }
