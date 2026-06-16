@@ -1,5 +1,11 @@
 #include "waypoint_manager.h"
 
+// --- Live Telemetry Storage ---
+float currentSpeed = 0.0;
+float currentHeading = 0.0;
+double currentLat = 0.0;
+double currentLon = 0.0;
+
 // Hardware Serial 1 dedicated to the Pixhawk
 HardwareSerial PixhawkSerial(1);
 
@@ -63,16 +69,16 @@ void handleMavlinkMessage(mavlink_message_t *msg)
         // ---> ADD THIS DIAGNOSTIC BLOCK <---
     case MAVLINK_MSG_ID_HEARTBEAT:
     {
-        // Only print occasionally to avoid spamming the terminal
-        static unsigned long lastHbPrint = 0;
-        if (millis() - lastHbPrint > 5000)
-        {
-            Serial.print("[MAVLINK DIAGNOSTIC] Heard heartbeat! Pixhawk SYS_ID: ");
-            Serial.print(msg->sysid);
-            Serial.print(" | COMP_ID: ");
-            Serial.println(msg->compid);
-            lastHbPrint = millis();
-        }
+        // // Only print occasionally to avoid spamming the terminal
+        // static unsigned long lastHbPrint = 0;
+        // if (millis() - lastHbPrint > 5000)
+        // {
+        //     Serial.print("[MAVLINK DIAGNOSTIC] Heard heartbeat! Pixhawk SYS_ID: ");
+        //     Serial.print(msg->sysid);
+        //     Serial.print(" | COMP_ID: ");
+        //     Serial.println(msg->compid);
+        //     lastHbPrint = millis();
+        // }
         break;
     }
     case MAVLINK_MSG_ID_COMMAND_ACK:
@@ -108,7 +114,29 @@ void handleMavlinkMessage(mavlink_message_t *msg)
         }
         break;
     }
-        // -----------------------------------
+    // ---> ADD THESE NEW TELEMETRY BLOCKS <---
+    case MAVLINK_MSG_ID_VFR_HUD:
+    {
+        mavlink_vfr_hud_t hud;
+        mavlink_msg_vfr_hud_decode(msg, &hud);
+
+        currentSpeed = hud.groundspeed; // Speed in m/s
+        currentHeading = hud.heading;   // Compass heading in degrees
+        break;
+    }
+
+    case MAVLINK_MSG_ID_GLOBAL_POSITION_INT:
+    {
+        mavlink_global_position_int_t pos;
+        mavlink_msg_global_position_int_decode(msg, &pos);
+
+        // Pixhawk sends Lat/Lon scaled by 10^7. We divide to get standard decimals.
+        currentLat = pos.lat / 10000000.0;
+        currentLon = pos.lon / 10000000.0;
+        break;
+    }
+    // ----------------------------------------
+    // -----------------------------------
     case MAVLINK_MSG_ID_MISSION_REQUEST_INT:
     case MAVLINK_MSG_ID_MISSION_REQUEST:
     {

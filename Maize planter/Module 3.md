@@ -222,3 +222,139 @@ In your `platformio.ini` file, under `lib_deps`, we will add the following libra
 #### 3. The MQTT Broker (The Traffic Cop)
 
 As discussed, we need a broker. For the bench-testing stage, we won't install anything; we will just use a free public broker string in our code (e.g., `broker.hivemq.com`). Later, for field validation (when there is no internet), you will simply download and run **Eclipse Mosquitto** on your laptop. It runs silently in the background and requires practically zero configuration.
+
+
+
+
+
+
+### Stage 3: Integration
+
+Brilliant. That visual confirmation means our core mathematics (Stage 2) have passed unit verification. We can confidently move to Stage 3: **Integration**, where we wrap this logic in a networked server so the frontend UI can actually talk to it.
+
+As per our architecture, we will split this into two files:
+
+1. **`data_models.py`:** This enforces our JSON "Data Contract". It acts as a strict bouncer, ensuring the frontend sends exactly the right data types before the maths engine tries to process them.
+    
+2. **`main.py`:** This is the FastAPI application. It opens an HTTP endpoint for the frontend, calls your `path_planner.py` script, and initialises the MQTT connection to your local Mosquitto broker.
+
+We are now ready to connect the farmer's interface to our new brain. We will be working inside the `1_Frontend_UI` folder.
+
+To make the UI fully functional with our backend, we need to modify the `script.js` file to do two things:
+
+1. **HTTP POST Request:** When the user clicks "Start", instead of generating fake points locally, JavaScript must send the field dimensions to our FastAPI endpoint (`http://127.0.0.1:8000/api/plan_mission`) and receive the array of coordinates.
+    
+2. **WebSockets / MQTT:** We need to connect the UI to the live telemetry stream so the planter's icon moves on the screen as it drives. (The easiest way to do this in a browser is to use standard WebSockets or an MQTT-over-WebSockets library like Paho).
+
+
+### ESP32  Firmware development (The telemetry link)
+
+Because the ESP32 is responsible for the hard real-time safety of a heavy agricultural machine, we cannot write this as one giant, procedural Arduino sketch. We must strictly adhere to our modular philosophy. We will architect this firmware as a **Non-Blocking State Machine**.
+
+Here is the proposed architectural breakdown for the `3_ESP32_Firmware/src/` directory. Let us discuss the specific responsibilities of each file before we write the code.
+
+### 1. The Core Architecture: File by File
+
+#### `main.cpp` (The Conductor)
+
+- **Role:** This is the heart of the State Machine. It does not handle complex logic directly; rather, it coordinates the other modules.
+    
+- **Behaviour:** In its `setup()`, it initialises the Serial ports and calls the setup functions of the other modules. In its `loop()`, it simply calls `MQTT.update()`, `MAVLink.update()`, and `Failsafe.check()` extremely rapidly without ever using a `delay()`.
+    
+- **States:** It holds the global system state (e.g., `STATE_IDLE`, `STATE_MISSION_RCV`, `STATE_CRUISE`, `STATE_ESTOP`).
+    
+
+#### `telemetry_mqtt.h` & `telemetry_mqtt.cpp` (The Network Bridge)
+
+- **Role:** Handles all wireless communication between the ESP32 and your Ubuntu laptop.
+    
+- **Behaviour:** * Maintains the Wi-Fi connection to your hotspot.
+    
+    - Connects to your local Mosquitto broker (Port 1883).
+        
+    - **Subscribe:** Listens to the `maizepro/mission` topic. When your Python backend publishes the JSON array of waypoints, this module catches it, parses it using `ArduinoJson`, and alerts `main.cpp` that a mission has arrived.
+        
+    - **Publish:** Gathers speed, heading, and GPS data (from the MAVLink module) and publishes it to `maizepro/telemetry` at a strict 1 Hz to update your web UI.
+        
+
+#### `waypoint_manager.h` & `waypoint_manager.cpp` (The Translator)
+
+- **Role:** The bridge between our custom JSON waypoints and the Pixhawk's aerospace protocol.
+    
+- **Behaviour:** * Takes the parsed Latitude/Longitude array from the MQTT module.
+    
+    - Initiates the strict MAVLink Mission Upload Protocol (Count → Request Item → Send Item → Ack).
+        
+    - Formats our waypoints into `MISSION_ITEM_INT` MAVLink packets and pushes them over the Hardware Serial (UART) to the Pixhawk.
+        
+
+#### `failsafe.h` (The Safety Net)
+
+- **Role:** Ensures the machine fails safely if _anything_ goes wrong.
+    
+- **Behaviour:** Constantly monitors the time since the last MQTT ping and the time since the last MAVLink heartbeat. If the Wi-Fi drops (laptop dies) or the Pixhawk disconnects (wire comes loose), this module overrides `main.cpp`, immediately forces the motor PWMs to neutral, and commands the Pixhawk to halt.
+    
+
+### 2. The Data Flow (How it all links together)
+
+Let us walk through the exact sequence of events when you click "Generate & Start Mission" on your web UI:
+
+1. **Web UI (JS)** sends dimensions to **FastAPI (Python)**.
+    
+2. **FastAPI** calculates the math and publishes a JSON array to Mosquitto (`maizepro/mission`).
+    
+3. The **ESP32 (`telemetry_mqtt.cpp`)** receives the JSON, parses the coordinates, and stores them in a local C++ array.
+    
+4. The **ESP32 (`main.cpp`)** changes state to `STATE_MISSION_RCV` and tells `waypoint_manager.cpp` to start talking to the Pixhawk.
+    
+5. The **ESP32 (`waypoint_manager.cpp`)** sends the MAVLink waypoint items over the UART wires to the Pixhawk.
+    
+6. The **Pixhawk** confirms receipt, arms itself, and begins driving the motors.
+    
+7. As it drives, the **Pixhawk** streams Ground Speed and Heading back to the ESP32 via MAVLink.
+    
+8. The **ESP32 (`telemetry_mqtt.cpp`)** packages this into JSON and publishes it to Mosquitto (`maizepro/telemetry`), which visually updates your web UI.
+
+
+### What is left in Module 3? (Closing the Loop)
+
+Currently, the ESP32 gives the Pixhawk the map, but it doesn't give it permission to drive, nor does it tell the farmer where the machine actually is. We have three final steps to complete Module 3:
+
+1. **Commanding the "Start" (Arming & Auto Mode):** Right now, the Pixhawk has the 20 waypoints, but it is sitting in "Manual" mode with the motors disarmed. We need to map a command so that when the web UI sends a specific signal, the ESP32 sends a `MAV_CMD_COMPONENT_ARM_DISARM` command to arm the motors, followed by a `MAV_CMD_DO_SET_MODE` command to switch the Pixhawk into "Auto" mode so it begins driving the route.
+    
+2. **Live Telemetry Extraction:** If you look at `main.cpp`, we are still calling `publishDummyTelemetry()`. We need to delete this. We must update `waypoint_manager.cpp` to listen for the Pixhawk's `VFR_HUD` message (which contains actual Ground Speed and Heading) and `GLOBAL_POSITION_INT` (which contains real-time Latitude and Longitude), and push those real numbers to our MQTT broker.
+    
+3. **UI Animation (The Canvas):** Once the real telemetry is flowing into the MQTT broker, we need to add a few lines of JavaScript to your frontend so the little planter icon physically moves along the green path on your screen as the real rover drives in the field.
+    
+
+### What is Module 4? (The Waypoint-to-Seed Sequence)
+
+Once Module 3 is closed, the rover will be able to drive the serpentine path autonomously. **Module 4** is where the rover actually becomes a _planter_.
+
+This is the ultimate Mechatronic Integration phase. We will marry your Seeding Unit (Module 2) with the Navigation Brain (Module 3).
+
+- The ESP32 will constantly read the real-time Ground Speed (vg​) coming from the Pixhawk.
+    
+- Based on our 60 cm row spacing and your required seed spacing (e.g., 30 cm along the row), the ESP32 will calculate the exact RPM required for the seed metering motor.
+    
+- If the rover slows down (e.g., hits a muddy patch), the ESP32 will instantly slow down the seed motor to guarantee perfectly even seed distribution.
+    
+- We will also implement the "Actuator Deploy" logic here, ensuring the furrow opener is lowered at the start of a row and raised during the U-turns.
+
+
+#### **Step 1: Arming and Auto Mode**.
+
+#### The Mechatronics Safety Briefing (CRITICAL)
+
+Up until this point, our code has been completely passive—just moving data around. The code we are about to write will physically engage the BTS7960 motor drivers.
+
+- **Safety Mandate:** Before you upload this code or press the button, you **MUST** place your planter chassis on blocks so that the drive wheels are suspended in the air. We are entering the "Live Fire" stage of testing.
+    
+
+#### The MAVLink Theory: Arming & Modes
+
+To make the Pixhawk drive the waypoints, we must send it two specific MAVLink commands in rapid succession:
+
+1. **`MAV_CMD_COMPONENT_ARM_DISARM`:** This tells the Pixhawk to remove the software lock on the PWM outputs. (Parameter 1 must be set to `1.0` to ARM).
+    
+2. **`MAV_CMD_DO_SET_MODE` (or `SET_MODE`):** ArduRover has several modes (Manual, Acro, Steering, Hold, Auto). We must command it to enter **Mode 10 (AUTO)**, which explicitly tells the flight controller: _"Look at the mission buffer and start driving to waypoint 0."_

@@ -95,16 +95,16 @@ void loopMotors()
     interrupts();
 
     // --- NEW: Diagnostic Serial Print (Every 1 second) ---
-    static unsigned long lastMotorPrint = 0;
-    if (millis() - lastMotorPrint > 1000)
-    {
-        Serial.print("[MOTORS] Pixhawk Input -> Left: ");
-        Serial.print(currentLeft);
-        Serial.print(" us | Right: ");
-        Serial.print(currentRight);
-        Serial.println(" us");
-        lastMotorPrint = millis();
-    }
+    // static unsigned long lastMotorPrint = 0;
+    // if (millis() - lastMotorPrint > 1000)
+    // {
+    //     Serial.print("[MOTORS] Pixhawk Input -> Left: ");
+    //     Serial.print(currentLeft);
+    //     Serial.print(" us | Right: ");
+    //     Serial.print(currentRight);
+    //     Serial.println(" us");
+    //     lastMotorPrint = millis();
+    // }
     // -----------------------------------------------------
 
     // Send the calculated speeds to the motor drivers

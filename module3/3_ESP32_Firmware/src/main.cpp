@@ -8,6 +8,7 @@ unsigned long lastTelemetryMillis = 0;
 void setup()
 {
   Serial.begin(115200);
+  Serial.setTimeout(0);
   delay(1000);
 
   Serial.println("\n====================================");
@@ -34,11 +35,13 @@ void loop()
   // 3. Update Motor PWMs (Lightning Fast, Non-Blocking)
   loopMotors();
 
-  // 4. Publish Dummy Telemetry to Web UI
+  // 4. Publish LIVE Telemetry to Web UI (1 Hz)
   unsigned long currentMillis = millis();
   if (currentMillis - lastTelemetryMillis >= 1000)
   {
     lastTelemetryMillis = currentMillis;
-    publishDummyTelemetry();
+
+    // Pass the live variables extracted from MAVLink straight to MQTT
+    publishLiveTelemetry("AUTO DRIVING", currentSpeed, currentHeading, currentLat, currentLon);
   }
 }

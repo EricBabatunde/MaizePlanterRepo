@@ -32,4 +32,10 @@ void loopMavlink();
 void startMissionUpload(NavWaypoint *points, uint16_t count);
 void commandArmAndAuto();
 
+// --- Live Telemetry Variables ---
+extern float currentSpeed;
+extern float currentHeading;
+extern double currentLat;
+extern double currentLon;
+
 #endif // WAYPOINT_MANAGER_H

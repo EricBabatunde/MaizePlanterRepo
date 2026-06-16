@@ -81,5 +81,3 @@ Adding the robustness required for a real farm.
 |**3**|MAVLink Mission Upload|Establish how to send a full "Row" to the Pixhawk.|
 |**4**|UI/UX Integration|Farmer input $\rightarrow$ coordinate generation.|
 |**5**|Failsafes|Obstacle avoidance & seed monitoring.|
-
-**Does this modular breakdown look correct to you?** Specifically, are you happy with **Module 2** being done entirely on the bench before we bolt the seeder to the chassis?

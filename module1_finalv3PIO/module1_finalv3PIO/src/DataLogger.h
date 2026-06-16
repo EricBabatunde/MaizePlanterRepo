@@ -9,9 +9,9 @@ void initLogger();
 void startNewLogFile(String bracketName);
 
 // Appends a new data point to the current run file
-void logToFS(int pwm, float speed);
+void logToFS(int pwm, float speed, float amps);
 
-void startTurnLog();
-void logTurnEvent(String phase, unsigned long duration);
+void logTurnEvent(String direction, unsigned long duration);
 void startTelemetryLog();
 void logTelemetry(int interval);
+void logJamEvent(unsigned long timestamp);

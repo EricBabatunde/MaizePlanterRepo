@@ -149,12 +149,37 @@ void loopNetwork()
 }
 
 // --- Dummy Telemetry Publisher ---
-void publishDummyTelemetry()
+// void publishDummyTelemetry()
+// {
+//     if (mqttClient.connected())
+//     {
+//         // Create a tiny JSON string simulating Pixhawk telemetry
+//         String payload = "{\"system_state\":\"CRUISE\", \"ground_speed\": 1.05, \"heading\": 45.2}";
+//         mqttClient.publish("maizepro/telemetry", payload.c_str());
+//     }
+// }
+
+// --- Live Telemetry Publisher ---
+void publishLiveTelemetry(String systemState, float speed, float heading, double lat, double lon)
 {
     if (mqttClient.connected())
     {
-        // Create a tiny JSON string simulating Pixhawk telemetry
-        String payload = "{\"system_state\":\"CRUISE\", \"ground_speed\": 1.05, \"heading\": 45.2}";
-        mqttClient.publish("maizepro/telemetry", payload.c_str());
+        // Allocate a small document for outgoing telemetry
+        StaticJsonDocument<256> doc;
+
+        doc["system_state"] = systemState;
+        doc["ground_speed"] = speed;
+        doc["heading"] = heading;
+
+        // Only publish GPS if we have a valid reading (not exactly 0.0)
+        if (lat != 0.0 && lon != 0.0)
+        {
+            doc["lat"] = lat;
+            doc["lon"] = lon;
+        }
+
+        char buffer[256];
+        serializeJson(doc, buffer);
+        mqttClient.publish("maizepro/telemetry", buffer);
     }
 }
