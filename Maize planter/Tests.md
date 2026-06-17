@@ -348,12 +348,12 @@ Critical for proving your mechatronic system doesn't destroy the maize kernels.
 
 #### Table 9: Seed Damage Assessment
 
-|**Damage Category**|**Count (n=500)**|**Percentage**|**Acceptance Threshold**|**Status**|
-|---|---|---|---|---|
-|Undamaged|487|97.4%|—|—|
-|Cracked (viable)|9|1.8%|—|—|
-|Severely damaged (unplantable)|4|0.8%|< 2%|✓|
-|**Total damage**|**13**|**2.6%**|**< 5%**|✓|
+| **Damage Category**            | **Count (n=500)** | **Percentage** | **Acceptance Threshold** | **Status** |
+| ------------------------------ | ----------------- | -------------- | ------------------------ | ---------- |
+| Undamaged                      | 487               | 97.4%          | —                        | —          |
+| Cracked (viable)               | 9                 | 1.8%           | —                        | —          |
+| Severely damaged (unplantable) | 4                 | 0.8%           | < 2%                     | ✓          |
+| **Total damage**               | **13**            | **2.6%**       | **< 5%**                 | ✓          |
 
 **Text to write in Results section:**
 

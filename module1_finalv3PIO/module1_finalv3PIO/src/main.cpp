@@ -25,7 +25,10 @@ unsigned long turnStartTime = 0;
 int jamPhase = 0;
 unsigned long jamStartTime = 0;
 // Set this threshold after probing the IS pin with a stalled motor
-const int JAM_THRESHOLD_RAW = 3200;
+const int JAM_THRESHOLD_RAW = 3600;
+
+unsigned long meterStartTime = 0;
+int jamDebounceCounter = 0;
 
 void setup()
 {
@@ -58,14 +61,28 @@ void loop()
   }
   else if (currentState == METER_TEST)
   {
-    // Actively monitor for a physical jam
-    if (analogRead(PIN_M_IS) > JAM_THRESHOLD_RAW)
+    // 1. Actively monitor for a physical jam
+    // Wait 500ms before checking to ignore massive motor startup inrush current
+    if (millis() - meterStartTime > 500)
     {
-      currentState = METER_JAM;
-      jamPhase = 0;
-      jamStartTime = millis();
-      logJamEvent(millis()); // Log the jam occurrence to Jam_Events.csv
-      Serial.println("[WARN] Jam Detected! Executing clear sequence.");
+
+      if (analogRead(PIN_M_IS) > JAM_THRESHOLD_RAW)
+      {
+        jamDebounceCounter++; // Increase the noise filter count
+
+        // Only trigger if it stays jammed for several consecutive loops
+        if (jamDebounceCounter > 5)
+        {
+          currentState = METER_JAM;
+          jamPhase = 0;
+          jamStartTime = millis();
+          Serial.println("[WARN] Jam Detected! Executing clear sequence.");
+        }
+      }
+      else
+      {
+        jamDebounceCounter = 0; // Reset if it was just a split-second noise spike
+      }
     }
   }
   else if (currentState == METER_JAM)
@@ -97,7 +114,12 @@ void loop()
       if (jamElapsed > 200)
       {
         currentState = METER_TEST;
-        setMeterMotor(180); // Resume forward RPM
+        setMeterMotor(225); // Resume forward RPM
+
+        // CRITICAL FIX: Reset the blind period timers for the new startup!
+        meterStartTime = millis();
+        jamDebounceCounter = 0;
+
         Serial.println("[INFO] Jam cleared. Resuming.");
       }
     }

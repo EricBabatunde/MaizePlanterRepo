@@ -247,7 +247,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len)
       else if (cmd == "METER_START")
       {
         currentState = METER_TEST;
-        setMeterMotor(225); // Adjust this 0-255 value for correct planting RPM
+        setMeterMotor(225);        // Using your new higher torque value
+        meterStartTime = millis(); // Record startup time
+        jamDebounceCounter = 0;    // Reset the noise filter
         Serial.println("\n[METER] Seed Plate Running.");
       }
       else if (cmd == "METER_STOP")

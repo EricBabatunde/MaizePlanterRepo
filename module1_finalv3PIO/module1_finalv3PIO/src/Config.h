@@ -39,6 +39,10 @@ extern int jamPhase;
 extern unsigned long jamStartTime;
 extern const int JAM_THRESHOLD_RAW;
 
+// --- Add these two lines ---
+extern unsigned long meterStartTime;
+extern int jamDebounceCounter;
+
 // --- Hardware Pins (ESP32-S3) ---
 // Motor Driver Pins
 const int PIN_L_LPWM = 11;

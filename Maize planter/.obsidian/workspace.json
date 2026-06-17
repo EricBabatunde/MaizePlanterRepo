@@ -50,7 +50,7 @@
             }
           }
         ],
-        "currentTab": 1
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -212,20 +212,20 @@
       "bases:Create new base": false
     }
   },
-  "active": "9d5e013c38eb42bb",
+  "active": "71e6754ecc67bbc3",
   "lastOpenFiles": [
-    "Test results.md",
     "Tests.md",
+    "Test results.md",
+    "Module 1.md",
+    "Tests 2.md",
+    "Module 3.md",
     "Hardware wiring guide.md",
     "Project context - Module 1.md",
-    "Module 3.md",
     "Stage 2.md",
     "Stage 3.md",
     "Stage 4 plans.md",
     "MOdule 3 sides.md",
-    "Module 1.md",
     "NOTES.md",
-    "Tests 2.md",
     "Autonomous stage steps.md",
     "Maize planter.md.md",
     "SOFTWARE REQUIREMENTS SPECIFICATION.md",
