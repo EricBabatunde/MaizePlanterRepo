@@ -1,250 +1,596 @@
-/* --- Global Styles & Resets --- */
+/* =============================================================================
+   GROUND CONTROL STATION — style.css
+   Dark-mode, high-contrast UI optimised for outdoor visibility.
+   Uses CSS Grid and Flexbox. No frameworks.
+   ============================================================================= */
+
+/* ---------------------------------------------------------------------------
+   1. DESIGN TOKENS (Custom Properties)
+   --------------------------------------------------------------------------- */
 :root {
-  --bg-dark: #121212;
-  --panel-bg: #1e1e1e;
-  --text-main: #e0e0e0;
-  --text-muted: #9e9e9e;
-  --accent-blue: #4dabf7;
-  --accent-green: #4CAF50;
-  --accent-red: #f03e3e;
-  --border-color: #333333;
+  /* Background colours */
+  --colour-bg-body:       #0a0c10;
+  --colour-bg-header:     #0d1117;
+  --colour-bg-panel:      #151920;
+  --colour-bg-card:       #1c2129;
+  --colour-bg-input:      #21262d;
+
+  /* Text colours */
+  --colour-text-primary:  #e6edf3;
+  --colour-text-secondary:#8b949e;
+  --colour-text-muted:    #656d76;
+
+  /* Accent colours */
+  --colour-accent-blue:   #58a6ff;
+  --colour-accent-cyan:   #39d2c0;
+  --colour-accent-green:  #3fb950;
+  --colour-accent-amber:  #d29922;
+  --colour-accent-red:    #f85149;
+
+  /* Borders */
+  --colour-border:        #30363d;
+  --colour-border-focus:  #58a6ff;
+
+  /* Radii */
+  --radius-sm:            4px;
+  --radius-md:            8px;
+  --radius-lg:            12px;
+
+  /* Transitions */
+  --transition-fast:      150ms ease;
+  --transition-base:      250ms ease;
+
+  /* E-STOP specifics */
+  --estop-bg:             #b91c1c;
+  --estop-bg-hover:       #dc2626;
+  --estop-shadow:         0 0 30px rgba(248, 81, 73, 0.5);
 }
 
-* {
+
+/* ---------------------------------------------------------------------------
+   2. GLOBAL RESET & BASE
+   --------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background-color: var(--bg-dark);
-  color: var(--text-main);
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--colour-bg-body);
+  color: var(--colour-text-primary);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  /* Prevent any scrollbars — kiosk-style GCS layout */
+}
+
+
+/* ---------------------------------------------------------------------------
+   3. HEADER BAR — Global status indicators
+   --------------------------------------------------------------------------- */
+header#headerBar {
+  display: flex;
   align-items: center;
-  min-height: 100vh;
-  padding: 20px;
+  justify-content: space-between;
+  background-color: var(--colour-bg-header);
+  border-bottom: 1px solid var(--colour-border);
+  padding: 0.5rem 1.25rem;
+  flex-shrink: 0;
+  z-index: 100;
 }
 
-/* --- Layout Container --- */
-.container {
-  width: 100%;
-  max-width: 1400px;
-  height: 90vh;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--panel-bg);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-
-/* --- Header --- */
-header {
-  background-color: #1a1a1a;
-  padding: 20px;
-  border-bottom: 1px solid var(--border-color);
-  text-align: center;
-}
-
-header h1 {
-  font-size: 1.5rem;
-  color: var(--text-main);
-  letter-spacing: 1px;
-}
-
-header p {
-  font-size: 0.9rem;
-  color: var(--accent-blue);
-  margin-top: 5px;
-}
-
-/* --- Main Layout Grid --- */
-main {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-/* --- Left Control Panel --- */
-.controls {
-  width: 350px;
-  padding: 20px;
-  background-color: #242424;
-  border-right: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  overflow-y: auto;
-}
-
-.controls h2,
-.controls h3 {
+header#headerBar h1 {
   font-size: 1.1rem;
-  color: var(--text-main);
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 10px;
-  margin-bottom: 5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--colour-text-primary);
+  white-space: nowrap;
 }
 
-/* Input Fields */
+.header-indicators {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* Individual indicator chip */
+.indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--colour-bg-card);
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--colour-border);
+}
+
+.indicator__label {
+  font-size: 0.75rem;
+  color: var(--colour-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.indicator__value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--colour-text-primary);
+}
+
+/* LED dot (connection / GPS) */
+.led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.led--connected {
+  background: var(--colour-accent-green);
+  box-shadow: 0 0 6px var(--colour-accent-green);
+  animation: pulse-green 2s infinite;
+}
+
+.led--disconnected {
+  background: var(--colour-accent-red);
+  box-shadow: 0 0 6px var(--colour-accent-red);
+  animation: pulse-red 1.5s infinite;
+}
+
+.led--no-fix {
+  background: var(--colour-accent-amber);
+  box-shadow: 0 0 6px var(--colour-accent-amber);
+}
+
+.led--fix-ok {
+  background: var(--colour-accent-green);
+  box-shadow: 0 0 6px var(--colour-accent-green);
+}
+
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+
+/* ---------------------------------------------------------------------------
+   4. MAIN GRID — Four-panel layout
+   --------------------------------------------------------------------------- */
+main#mainGrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 260px 260px 1fr;
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas:
+    "telemetry  mission   map"
+    "telemetry  diagnostics map";
+  gap: 1px;
+  background-color: var(--colour-border);
+  overflow: hidden;
+  min-height: 0;
+}
+
+
+/* ---------------------------------------------------------------------------
+   5. PANEL BASE STYLES
+   --------------------------------------------------------------------------- */
+.panel {
+  background-color: var(--colour-bg-panel);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.panel__title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--colour-accent-cyan);
+  border-bottom: 1px solid var(--colour-border);
+  padding-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Grid area assignments */
+.panel--telemetry   { grid-area: telemetry; }
+.panel--mission     { grid-area: mission; }
+.panel--map         { grid-area: map; }
+.panel--diagnostics { grid-area: diagnostics; }
+
+
+/* ---------------------------------------------------------------------------
+   6. PANEL 1 — TELEMETRY CARDS
+   --------------------------------------------------------------------------- */
+.telemetry-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--colour-bg-card);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.8rem;
+  transition: border-color var(--transition-fast);
+}
+
+.telemetry-card:hover {
+  border-color: var(--colour-accent-cyan);
+}
+
+.telemetry-card__label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--colour-text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.telemetry-card__value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--colour-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.telemetry-card__value small {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--colour-text-secondary);
+  margin-left: 2px;
+}
+
+
+/* ---------------------------------------------------------------------------
+   7. BADGES (System State)
+   --------------------------------------------------------------------------- */
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem !important;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.badge--idle    { background: #30363d; color: #8b949e; }
+.badge--auto    { background: #0d4429; color: var(--colour-accent-green); }
+.badge--manual  { background: #321d08; color: var(--colour-accent-amber); }
+.badge--estop   { background: #5c1212; color: var(--colour-accent-red); animation: pulse-red 1s infinite; }
+
+
+/* ---------------------------------------------------------------------------
+   8. PANEL 2 — MISSION CONTROL INPUTS
+   --------------------------------------------------------------------------- */
 .input-group {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.3rem;
 }
 
 .input-group label {
-  font-size: 0.9rem;
-  color: var(--text-muted);
+  font-size: 0.75rem;
+  color: var(--colour-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.input-group input {
-  width: 80px;
-  padding: 8px;
-  background-color: #333;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--text-main);
-  text-align: right;
+.input-group input,
+.waypoint-upload textarea {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background-color: var(--colour-bg-input);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-sm);
+  color: var(--colour-text-primary);
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.85rem;
+  transition: border-color var(--transition-fast);
+  resize: vertical;
 }
 
-.input-group input:focus {
+.input-group input:focus,
+.waypoint-upload textarea:focus {
   outline: none;
-  border-color: var(--accent-blue);
+  border-color: var(--colour-border-focus);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
 }
 
-.input-group input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Buttons */
-button {
-  padding: 12px;
-  border: none;
-  border-radius: 6px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background-color 0.2s, transform 0.1s;
-}
-
-button:active {
-  transform: scale(0.98);
-}
-
-#startBtn {
-  background-color: var(--accent-blue);
-  color: #fff;
-  margin-top: 10px;
-}
-
-#startBtn:hover {
-  background-color: #3b8cd6;
-}
-
-#resetBtn {
-  background-color: transparent;
-  color: var(--accent-red);
-  border: 1px solid var(--accent-red);
-}
-
-#resetBtn:hover {
-  background-color: rgba(240, 62, 62, 0.1);
-}
-
-/* Telemetry Panel */
-.status-panel {
-  background-color: #1a1a1a;
-  padding: 15px;
-  border-radius: 8px;
-  margin-top: auto;
-  /* Pushes it to the bottom of the control panel */
-}
-
-.status-panel p {
-  font-size: 0.9rem;
-  margin-bottom: 10px;
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-muted);
-}
-
-.status-panel span {
-  font-weight: bold;
-  color: var(--text-main);
-}
-
-/* Status Badges */
-.badge {
-  padding: 3px 8px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-}
-
-.badge.idle {
-  background-color: #555;
-  color: white;
-}
-
-.badge.planning {
-  background-color: #f59f00;
-  color: #000;
-}
-
-.badge.cruise {
-  background-color: var(--accent-green);
-  color: white;
-}
-
-/* --- Right Visualisation Area --- */
-.visualization {
-  flex: 1;
-  padding: 20px;
+.waypoint-upload {
   display: flex;
   flex-direction: column;
-  background-color: #1e1e1e;
+  gap: 0.35rem;
 }
 
-.grid-container {
+.waypoint-upload label {
+  font-size: 0.75rem;
+  color: var(--colour-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+
+/* ---------------------------------------------------------------------------
+   9. BUTTONS
+   --------------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), transform 80ms ease;
+  flex-shrink: 0;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn__icon {
+  font-size: 0.9rem;
+}
+
+/* Primary — Start Mission */
+.btn--primary {
+  background: linear-gradient(135deg, #238636, #2ea043);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(46, 160, 67, 0.25);
+}
+
+.btn--primary:hover {
+  background: linear-gradient(135deg, #2ea043, #3fb950);
+}
+
+/* Secondary — general utility */
+.btn--secondary {
+  background-color: var(--colour-bg-card);
+  color: var(--colour-text-primary);
+  border: 1px solid var(--colour-border);
+}
+
+.btn--secondary:hover {
+  background-color: var(--colour-bg-input);
+  border-color: var(--colour-accent-blue);
+}
+
+
+/* ---------------------------------------------------------------------------
+   10. PANEL 3 — MAP CANVAS
+   --------------------------------------------------------------------------- */
+.canvas-wrapper {
   flex: 1;
   position: relative;
-  background-color: #121212;
-  border: 2px dashed #333;
-  border-radius: 8px;
+  background-color: var(--colour-bg-body);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
-  /* Grid background pattern */
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 50px 50px;
+  min-height: 0;
 }
 
-/* The Canvas where JS draws the line */
-#pathCanvas {
-  position: absolute;
-  top: 0;
-  left: 0;
+#mapCanvas {
+  display: block;
   width: 100%;
   height: 100%;
-  z-index: 1;
 }
 
-/* The Planter Icon */
-.planter-icon {
+
+/* ---------------------------------------------------------------------------
+   11. PANEL 4 — DIAGNOSTICS & LOGGING
+   --------------------------------------------------------------------------- */
+
+/* Toggle switch styles */
+.toggle-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.toggle-label {
+  font-size: 0.8rem;
+  color: var(--colour-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
   position: absolute;
-  width: 24px;
-  height: 24px;
-  background-color: transparent;
-  color: var(--accent-blue);
-  font-size: 24px;
-  line-height: 24px;
-  text-align: center;
-  /* Initial position: bottom right */
-  left: 90%;
-  top: 90%;
-  transform: translate(-50%, -50%);
-  z-index: 10;
-  transition: all 0.3s linear;
+  inset: 0;
+  background-color: var(--colour-bg-input);
+  border: 1px solid var(--colour-border);
+  border-radius: 22px;
+  cursor: pointer;
+  transition: background-color var(--transition-base);
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--colour-text-secondary);
+  border-radius: 50%;
+  transition: transform var(--transition-base), background-color var(--transition-base);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #0d4429;
+  border-color: var(--colour-accent-green);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+  background-color: var(--colour-accent-green);
+}
+
+.toggle-status {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--colour-text-muted);
+  min-width: 2rem;
+}
+
+.log-counter {
+  font-size: 0.8rem;
+  color: var(--colour-text-secondary);
+  margin-top: auto;
+  /* Push to bottom of panel */
+}
+
+.log-counter span {
+  font-weight: 700;
+  color: var(--colour-accent-cyan);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ---------------------------------------------------------------------------
+   12. E-STOP BAR — Persistent emergency stop
+   --------------------------------------------------------------------------- */
+.estop-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1a0000;
+  border-top: 2px solid var(--estop-bg);
+  padding: 0.5rem 1rem;
+  flex-shrink: 0;
+  z-index: 200;
+}
+
+.btn--estop {
+  width: 100%;
+  max-width: 600px;
+  padding: 1rem 2rem;
+  background: linear-gradient(180deg, #dc2626, #991b1b);
+  color: #ffffff;
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  border: 3px solid #fca5a5;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  box-shadow: var(--estop-shadow);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform 80ms ease;
+  /* Pulsing attention animation */
+  animation: estop-pulse 2.5s ease-in-out infinite;
+}
+
+.btn--estop:hover {
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  box-shadow: 0 0 50px rgba(248, 81, 73, 0.7);
+}
+
+.btn--estop:active {
+  transform: scale(0.96);
+  box-shadow: 0 0 15px rgba(248, 81, 73, 0.3);
+}
+
+@keyframes estop-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(248, 81, 73, 0.3); }
+  50%      { box-shadow: 0 0 40px rgba(248, 81, 73, 0.6); }
+}
+
+
+/* ---------------------------------------------------------------------------
+   13. SCROLLBAR STYLING (WebKit)
+   --------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--colour-bg-panel);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--colour-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--colour-text-muted);
+}
+
+
+/* ---------------------------------------------------------------------------
+   14. RESPONSIVE — Tablet / Narrow Screens
+   --------------------------------------------------------------------------- */
+@media (max-width: 960px) {
+  main#mainGrid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "telemetry  mission"
+      "diagnostics diagnostics"
+      "map         map";
+  }
+
+  .btn--estop {
+    font-size: 1.3rem;
+    padding: 0.8rem 1.5rem;
+  }
+}
+
+@media (max-width: 600px) {
+  main#mainGrid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto 1fr;
+    grid-template-areas:
+      "telemetry"
+      "mission"
+      "diagnostics"
+      "map";
+  }
+
+  header#headerBar {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+
+  .header-indicators {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 }
