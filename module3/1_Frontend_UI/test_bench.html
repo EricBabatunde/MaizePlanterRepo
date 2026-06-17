@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description"
+    content="Mathematical test-bench for the Autonomous Maize Planter path-planning algorithms — verifies geodetic conversions and boustrophedon route generation.">
+  <title>Path Planner — Test Bench</title>
+
+  <style>
+    /* Minimal dark styling — this is an engineering test page, not a UI */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Consolas', 'Courier New', monospace;
+      background: #0a0c10;
+      color: #e6edf3;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      color: #39d2c0;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    h2 {
+      font-size: 0.9rem;
+      color: #58a6ff;
+      margin-top: 1.5rem;
+      margin-bottom: 0.3rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    p, pre {
+      font-size: 0.85rem;
+      color: #8b949e;
+    }
+
+    pre {
+      background: #151920;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-top: 0.5rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+
+    .pass { color: #3fb950; }
+    .fail { color: #f85149; }
+    .info { color: #d29922; }
+
+    #output {
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Maize Planter — Path Planner Test Bench</h1>
+  <p>Open the browser Developer Console (F12) for the full waypoint table.</p>
+
+  <div id="output"></div>
+
+  <!-- ─────────────────────────────────────────────────────────────────
+       Load the two modules in dependency order:
+       1. geo_math.js   — geodetic conversion (no dependencies)
+       2. path_planner.js — route generator (depends on geo_math.js)
+       ───────────────────────────────────────────────────────────────── -->
+  <script src="geo_math.js"></script>
+  <script src="path_planner.js"></script>
+
+  <script>
+    'use strict';
+
+    /* =================================================================
+       HARDCODED "FARMER INPUTS"
+       Mirrors the Python __main__ test block in path_planner.py
+       ================================================================= */
+
+    // Dummy start location (Federal University of Agriculture, Abeokuta)
+    const START_LAT = 7.2225;
+    const START_LON = 3.4408;
+
+    // Farmer-specified parameters
+    const INITIAL_HEADING = 45.0;   // Facing North-East (degrees)
+    const FIELD_LENGTH    = 20.0;   // 20 metres along-track
+    const FIELD_WIDTH     = 5.0;    // 5 metres cross-track
+    const ROW_SPACING     = 0.6;    // 60 cm between rows
+
+    /* =================================================================
+       EXECUTE THE PATH PLANNER
+       ================================================================= */
+    const missionPlan = generateWaypoints(
+      START_LAT,
+      START_LON,
+      INITIAL_HEADING,
+      FIELD_LENGTH,
+      FIELD_WIDTH,
+      ROW_SPACING
+    );
+
+    /* =================================================================
+       OUTPUT TO CONSOLE (tabular format)
+       ================================================================= */
+    console.log('%c═══════════════════════════════════════════════════════════', 'color: #39d2c0');
+    console.log('%c  MAIZE PLANTER — PATH PLANNER TEST RESULTS', 'color: #39d2c0; font-weight: bold');
+    console.log('%c═══════════════════════════════════════════════════════════', 'color: #39d2c0');
+    console.log(`  Start:   Lat ${START_LAT}, Lon ${START_LON}`);
+    console.log(`  Heading: ${INITIAL_HEADING}°  |  Field: ${FIELD_LENGTH}m × ${FIELD_WIDTH}m  |  Spacing: ${ROW_SPACING}m`);
+    console.log(`  Total waypoints: ${missionPlan.length}`);
+    console.log('');
+
+    // Use console.table for a clean spreadsheet-like view
+    console.table(missionPlan.map((wp, idx) => ({
+      '#':       idx,
+      'Row':     wp.row,
+      'Lat':     wp.lat.toFixed(7),
+      'Lon':     wp.lon.toFixed(7),
+      'Local X': wp.local_x.toFixed(2),
+      'Local Y': wp.local_y.toFixed(2),
+    })));
+
+    // Also print the first 4 waypoints to match the Python test output
+    console.log('%c── First 4 Waypoints (matches Python output) ──', 'color: #58a6ff');
+    missionPlan.slice(0, 4).forEach(wp => {
+      console.log(`  Row ${wp.row} → Lat: ${wp.lat.toFixed(7)}, Lon: ${wp.lon.toFixed(7)}`);
+    });
+
+    /* =================================================================
+       UNIT TEST: GEO_MATH SANITY CHECK
+       Verify that calculateGlobalCoordinate returns sensible values.
+       A 0 m offset should return the origin coordinates unchanged.
+       ================================================================= */
+    const zeroOffset = calculateGlobalCoordinate(START_LAT, START_LON, 0, 0, 0);
+    const zeroTestPass = (zeroOffset.lat === START_LAT && zeroOffset.lon === START_LON);
+
+    console.log('');
+    console.log('%c── Unit Test: Zero-Offset Identity ──', 'color: #58a6ff');
+    console.log(`  Input:    (0, 0) at heading 0°`);
+    console.log(`  Expected: Lat ${START_LAT}, Lon ${START_LON}`);
+    console.log(`  Got:      Lat ${zeroOffset.lat}, Lon ${zeroOffset.lon}`);
+    console.log(`  Result:   ${zeroTestPass ? '✓ PASS' : '✗ FAIL'}`);
+
+    /* =================================================================
+       UNIT TEST: NORTHWARD OFFSET
+       Moving 100 m due North (heading 0°) at the equator should
+       increase latitude by approximately 0.0008983°.
+       (100 / 6378137) × (180/π) ≈ 0.00089832°
+       ================================================================= */
+    const northTest = calculateGlobalCoordinate(0, 0, 0, 100, 0);
+    const expectedLatDelta = (100 / 6378137.0) * (180.0 / Math.PI);
+    const northTestPass = Math.abs(northTest.lat - expectedLatDelta) < 1e-10;
+
+    console.log('');
+    console.log('%c── Unit Test: 100 m Northward at Equator ──', 'color: #58a6ff');
+    console.log(`  Expected Δlat: ${expectedLatDelta.toFixed(10)}`);
+    console.log(`  Got lat:       ${northTest.lat.toFixed(10)}`);
+    console.log(`  Result:        ${northTestPass ? '✓ PASS' : '✗ FAIL'}`);
+
+    /* =================================================================
+       RENDER SUMMARY TO PAGE
+       ================================================================= */
+    const outputDiv = document.getElementById('output');
+
+    // Test results summary
+    const allTestsPass = zeroTestPass && northTestPass;
+
+    outputDiv.innerHTML = `
+      <h2>Test Inputs</h2>
+      <pre>Start:     Lat ${START_LAT}, Lon ${START_LON}
+Heading:   ${INITIAL_HEADING}°
+Field:     ${FIELD_LENGTH} m × ${FIELD_WIDTH} m
+Spacing:   ${ROW_SPACING} m</pre>
+
+      <h2>Results</h2>
+      <pre>Total waypoints generated: <strong>${missionPlan.length}</strong>
+Expected rows:            ${Math.ceil(FIELD_WIDTH / ROW_SPACING) + 1}
+Waypoints per row:        2 (Long Vector strategy)</pre>
+
+      <h2>First 4 Waypoints</h2>
+      <pre>${missionPlan.slice(0, 4).map(wp =>
+        `Row ${wp.row}  →  Lat: ${wp.lat.toFixed(7)},  Lon: ${wp.lon.toFixed(7)}  |  local(${wp.local_x.toFixed(2)}, ${wp.local_y.toFixed(2)})`
+      ).join('\n')}</pre>
+
+      <h2>Unit Tests</h2>
+      <pre>Zero-Offset Identity:     <span class="${zeroTestPass ? 'pass' : 'fail'}">${zeroTestPass ? '✓ PASS' : '✗ FAIL'}</span>
+100 m Northward (Equator): <span class="${northTestPass ? 'pass' : 'fail'}">${northTestPass ? '✓ PASS' : '✗ FAIL'}</span>
+
+Overall: <span class="${allTestsPass ? 'pass' : 'fail'}">${allTestsPass ? '✓ ALL TESTS PASSED' : '✗ SOME TESTS FAILED'}</span></pre>
+
+      <p style="margin-top: 1rem; color: #656d76;">
+        Open the Developer Console (F12) for the full waypoint table via <code>console.table()</code>.
+      </p>
+    `;
+  </script>
+
+</body>
+</html>
