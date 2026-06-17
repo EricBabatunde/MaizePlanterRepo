@@ -12,34 +12,37 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
   const DOM = {
     // Header indicators
-    ledConnection:  document.getElementById('ledConnection'),
-    valConnection:  document.getElementById('valConnection'),
-    valLatency:     document.getElementById('valLatency'),
-    valBattery:     document.getElementById('valBattery'),
-    ledGPS:         document.getElementById('ledGPS'),
-    valGPS:         document.getElementById('valGPS'),
+    ledConnection: document.getElementById('ledConnection'),
+    valConnection: document.getElementById('valConnection'),
+    valLatency: document.getElementById('valLatency'),
+    valBattery: document.getElementById('valBattery'),
+    ledGPS: document.getElementById('ledGPS'),
+    valGPS: document.getElementById('valGPS'),
     // Telemetry cards
-    valState:       document.getElementById('valState'),
-    valSpeed:       document.getElementById('valSpeed'),
-    valHeading:     document.getElementById('valHeading'),
-    valWpDist:      document.getElementById('valWpDist'),
-    valPosition:    document.getElementById('valPosition'),
+    valState: document.getElementById('valState'),
+    valSpeed: document.getElementById('valSpeed'),
+    valHeading: document.getElementById('valHeading'),
+    valWpDist: document.getElementById('valWpDist'),
+    valPosition: document.getElementById('valPosition'),
     // Mission control
-    inputRowSpacing:    document.getElementById('inputRowSpacing'),
-    inputWaypoints:     document.getElementById('inputWaypoints'),
+    inputRowSpacing: document.getElementById('inputRowSpacing'),
+    inputFieldWidth: document.getElementById('inputFieldWidth'),
+    inputFieldLength: document.getElementById('inputFieldLength'),
+    btnApplyMapScale: document.getElementById('btnApplyMapScale'),
+    inputWaypoints: document.getElementById('inputWaypoints'),
     btnUploadWaypoints: document.getElementById('btnUploadWaypoints'),
-    btnStartMission:    document.getElementById('btnStartMission'),
+    btnStartMission: document.getElementById('btnStartMission'),
     // Map canvas
-    mapCanvas:      document.getElementById('mapCanvas'),
-    canvasWrapper:  document.getElementById('canvasWrapper'),
+    mapCanvas: document.getElementById('mapCanvas'),
+    canvasWrapper: document.getElementById('canvasWrapper'),
     // Diagnostics
-    btnUTurnTest:   document.getElementById('btnUTurnTest'),
-    toggleLogging:  document.getElementById('toggleLogging'),
-    loggingStatus:  document.getElementById('loggingStatus'),
-    btnExportCSV:   document.getElementById('btnExportCSV'),
-    valLogCount:    document.getElementById('valLogCount'),
+    btnUTurnTest: document.getElementById('btnUTurnTest'),
+    toggleLogging: document.getElementById('toggleLogging'),
+    loggingStatus: document.getElementById('loggingStatus'),
+    btnExportCSV: document.getElementById('btnExportCSV'),
+    valLogCount: document.getElementById('valLogCount'),
     // E-STOP
-    btnEstop:       document.getElementById('btnEstop'),
+    btnEstop: document.getElementById('btnEstop'),
   };
 
   const ctx = DOM.mapCanvas.getContext('2d');
@@ -64,18 +67,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Data logging
     isLogging: false,
     logBuffer: [],
-    // Canvas transform cache
-    canvasScale: 1,
-    canvasOffsetX: 0,
-    canvasOffsetY: 0,
-    canvasFieldMinX: 0,
-    canvasFieldMinY: 0,
+    // Static farmland scaling (Pixels-Per-Metre)
+    ppm: 1,
+    fieldWidth: 50,   // metres — default
+    fieldLength: 50,   // metres — default
   };
 
   // =========================================================================
   // 3. WEBSOCKET CLIENT MODULE
   // =========================================================================
-  const WS_URL = `ws://${window.location.hostname || '192.168.4.1'}/ws`;
+  const WS_URL = `ws://localhost:8080/ws`;
   let ws = null;
   let reconnectTimer = null;
   const RECONNECT_DELAY_MS = 3000;
@@ -134,14 +135,20 @@ document.addEventListener('DOMContentLoaded', () => {
    */
   function handleTelemetry(d) {
     // Update internal state
-    if (d.state !== undefined)   state.systemState = d.state;
-    if (d.v_g !== undefined)     state.groundSpeed  = d.v_g;
-    if (d.heading !== undefined) state.heading       = d.heading;
-    if (d.x !== undefined)       state.posX          = d.x;
-    if (d.y !== undefined)       state.posY          = d.y;
-    if (d.wp_dist !== undefined) state.wpDist        = d.wp_dist;
-    if (d.batt !== undefined)    state.battery       = d.batt;
-    if (d.ping !== undefined)    state.ping          = d.ping;
+    if (d.state !== undefined) state.systemState = d.state;
+    if (d.v_g !== undefined) state.groundSpeed = d.v_g;
+    if (d.heading !== undefined) {
+      /* SPINNING-HEADING FIX — Normalise to 0–360°.
+         If the ESP32 sends cumulative gyroscope deltas or values
+         outside the expected range, this clamp prevents the canvas
+         rotation from spiralling out of control. */
+      state.heading = ((d.heading % 360) + 360) % 360;
+    }
+    if (d.x !== undefined) state.posX = d.x;
+    if (d.y !== undefined) state.posY = d.y;
+    if (d.wp_dist !== undefined) state.wpDist = d.wp_dist;
+    if (d.batt !== undefined) state.battery = d.batt;
+    if (d.ping !== undefined) state.ping = d.ping;
 
     // Push to UI
     updateTelemetryUI();
@@ -173,9 +180,9 @@ document.addEventListener('DOMContentLoaded', () => {
       (s === 'AUTO' ? 'auto' : s === 'MANUAL' ? 'manual' : s === 'E-STOP' ? 'estop' : 'idle');
 
     // Numerical readouts
-    DOM.valSpeed.innerHTML   = `${state.groundSpeed.toFixed(2)} <small>m/s</small>`;
+    DOM.valSpeed.innerHTML = `${state.groundSpeed.toFixed(2)} <small>m/s</small>`;
     DOM.valHeading.innerHTML = `${state.heading.toFixed(1)}<small>°</small>`;
-    DOM.valWpDist.innerHTML  = `${state.wpDist.toFixed(1)} <small>m</small>`;
+    DOM.valWpDist.innerHTML = `${state.wpDist.toFixed(1)} <small>m</small>`;
     DOM.valPosition.textContent = `${state.posX.toFixed(1)} , ${state.posY.toFixed(1)}`;
 
     // Header indicators
@@ -189,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // =========================================================================
-  // 6. CANVAS RENDERER MODULE
+  // 6. CANVAS RENDERER MODULE — Fixed PPM with Bottom-Left Origin
   // =========================================================================
   const GRID_COLOUR    = 'rgba(255,255,255,0.06)';
   const AXIS_COLOUR    = 'rgba(255,255,255,0.15)';
@@ -197,84 +204,83 @@ document.addEventListener('DOMContentLoaded', () => {
   const WP_LINE_COLOUR = 'rgba(88,166,255,0.3)';
   const PLANTER_COLOUR = '#3fb950';
   const TRAIL_COLOUR   = 'rgba(63,185,80,0.25)';
-  const CANVAS_PAD     = 50; // pixels of padding around field extents
 
-  /** Resize the canvas buffer to match its CSS size (prevents blurriness). */
-  function resizeCanvas() {
-    const rect = DOM.canvasWrapper.getBoundingClientRect();
-    DOM.mapCanvas.width  = rect.width;
-    DOM.mapCanvas.height = rect.height;
+  /**
+   * Apply the user-defined farmland dimensions to the canvas.
+   * Calculates a fixed Pixels-Per-Metre (PPM) scale and sets the
+   * canvas buffer size to maintain the physical aspect ratio of
+   * the field.  This replaces all previous dynamic auto-zoom logic.
+   */
+  function applyMapScale() {
+    const fieldW = parseFloat(DOM.inputFieldWidth.value)  || 50;
+    const fieldL = parseFloat(DOM.inputFieldLength.value) || 50;
+
+    state.fieldWidth  = fieldW;
+    state.fieldLength = fieldL;
+
+    /* PPM is derived from the container's CSS width and the field width */
+    const containerWidth = DOM.canvasWrapper.clientWidth;
+    if (containerWidth < 1) return;
+
+    state.ppm = containerWidth / fieldW;
+
+    /* Set canvas buffer dimensions — width fills the container;
+       height is proportional to the field length in metres */
+    DOM.mapCanvas.width  = containerWidth;
+    DOM.mapCanvas.height = Math.round(fieldL * state.ppm);
+
+    console.log(`[Map] Scale applied — Field: ${fieldW}×${fieldL} m, PPM: ${state.ppm.toFixed(2)}, Canvas: ${DOM.mapCanvas.width}×${DOM.mapCanvas.height} px`);
     renderCanvas();
   }
 
-  /** Compute scale and offset to fit waypoints + planter position into the canvas. */
-  function computeTransform() {
-    const allX = state.waypoints.map(w => w.x).concat([state.posX]);
-    const allY = state.waypoints.map(w => w.y).concat([state.posY]);
-    if (allX.length === 0) { state.canvasScale = 1; return; }
-
-    const minX = Math.min(...allX, 0);
-    const maxX = Math.max(...allX, 1);
-    const minY = Math.min(...allY, 0);
-    const maxY = Math.max(...allY, 1);
-
-    const fieldW = maxX - minX || 1;
-    const fieldH = maxY - minY || 1;
-    const cw = DOM.mapCanvas.width  - CANVAS_PAD * 2;
-    const ch = DOM.mapCanvas.height - CANVAS_PAD * 2;
-
-    state.canvasScale   = Math.min(cw / fieldW, ch / fieldH);
-    state.canvasOffsetX = CANVAS_PAD - minX * state.canvasScale + (cw - fieldW * state.canvasScale) / 2;
-    // Y-axis is inverted on canvas (top = 0), so we flip
-    state.canvasOffsetY = DOM.mapCanvas.height - CANVAS_PAD + minY * state.canvasScale - (ch - fieldH * state.canvasScale) / 2;
-    state.canvasFieldMinX = minX;
-    state.canvasFieldMinY = minY;
-  }
-
-  /** Convert field coordinates (metres) to canvas pixel coordinates. */
+  /**
+   * Convert field coordinates (metres) to canvas pixel coordinates
+   * using the fixed PPM scale with a bottom-left origin.
+   *   PixelX = TelemetryX × PPM
+   *   PixelY = canvas.height − (TelemetryY × PPM)
+   */
   function toCanvas(x, y) {
     return [
-      state.canvasOffsetX + x * state.canvasScale,
-      state.canvasOffsetY - y * state.canvasScale,
+      x * state.ppm,
+      DOM.mapCanvas.height - (y * state.ppm),
     ];
   }
 
-  /** Draw a background reference grid with axis labels. */
+  /**
+   * Draw a static reference grid at fixed metre increments.
+   * Uses 1 m lines when PPM ≥ 10, otherwise 5 m lines.
+   */
   function drawGrid() {
-    const w = DOM.mapCanvas.width;
-    const h = DOM.mapCanvas.height;
-    const step = state.canvasScale >= 10 ? 1 : state.canvasScale >= 4 ? 5 : 10; // metres
+    const w    = DOM.mapCanvas.width;
+    const h    = DOM.mapCanvas.height;
+    const step = state.ppm >= 10 ? 1 : 5; // metres per grid line
 
     ctx.strokeStyle = GRID_COLOUR;
     ctx.lineWidth   = 1;
     ctx.font        = '10px sans-serif';
     ctx.fillStyle   = AXIS_COLOUR;
 
-    // Vertical grid lines
-    const startX = Math.floor(state.canvasFieldMinX / step) * step;
-    for (let gx = startX; ; gx += step) {
-      const [px] = toCanvas(gx, 0);
-      if (px > w + 10) break;
-      if (px < -10) continue;
+    // Vertical grid lines (X-axis, left to right)
+    for (let gx = 0; gx <= state.fieldWidth; gx += step) {
+      const px = gx * state.ppm;
       ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
       ctx.fillText(`${gx}m`, px + 3, h - 4);
     }
-    // Horizontal grid lines
-    const startY = Math.floor(state.canvasFieldMinY / step) * step;
-    for (let gy = startY; ; gy += step) {
-      const [, py] = toCanvas(0, gy);
-      if (py < -10) break;
-      if (py > h + 10) continue;
+
+    // Horizontal grid lines (Y-axis, bottom to top)
+    for (let gy = 0; gy <= state.fieldLength; gy += step) {
+      const py = h - (gy * state.ppm);
       ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
       ctx.fillText(`${gy}m`, 4, py - 3);
     }
 
-    // Draw origin axes slightly brighter
+    // Draw origin axes (X=0 and Y=0) slightly brighter
     ctx.strokeStyle = AXIS_COLOUR;
-    ctx.lineWidth = 1.5;
-    const [ox, oy] = toCanvas(0, 0);
-    ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, h); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(w, oy); ctx.stroke();
+    ctx.lineWidth   = 1.5;
+    // X=0 vertical axis
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, h); ctx.stroke();
+    // Y=0 horizontal axis (bottom of canvas)
+    ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(w, h); ctx.stroke();
   }
 
   /** Draw waypoint markers and connecting lines. */
@@ -312,23 +318,34 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * Draw the planter as a directional triangle that rotates to
-   * match its current heading.
+   * Draw the planter as a directional triangle.
+   * The incoming telemetry heading is in DEGREES (0–360), already
+   * normalised by handleTelemetry().  Canvas rotate() expects
+   * RADIANS, so we convert here:
+   *   radians = degrees × (Math.PI / 180)
+   * The −90° offset ensures 0° heading points North (up on screen).
+   *
+   * ctx.save() / ctx.restore() bracket ALL translate/rotate calls
+   * so the transform matrix is cleanly reset for the next frame.
    */
   function drawPlanter() {
     const [px, py] = toCanvas(state.posX, state.posY);
-    const rad = (state.heading - 90) * (Math.PI / 180); // -90 because 0° = North (up)
+
+    /* Convert heading from degrees to radians for canvas rotation.
+       Subtract 90° so that 0° = North (canvas 0 rad = East).
+       state.heading is already normalised to 0–360 by handleTelemetry(). */
+    const headingRad = (state.heading - 90) * (Math.PI / 180);
     const size = 12;
 
     ctx.save();
     ctx.translate(px, py);
-    ctx.rotate(rad);
+    ctx.rotate(headingRad);
 
     // Triangle (points right in local coords, rotated by heading)
     ctx.beginPath();
     ctx.moveTo(size, 0);
     ctx.lineTo(-size * 0.6, -size * 0.5);
-    ctx.lineTo(-size * 0.6, size * 0.5);
+    ctx.lineTo(-size * 0.6,  size * 0.5);
     ctx.closePath();
     ctx.fillStyle = PLANTER_COLOUR;
     ctx.fill();
@@ -338,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ctx.restore();
 
-    // Glow effect
+    // Glow effect (drawn in absolute coordinates — no rotation needed)
     ctx.beginPath();
     ctx.arc(px, py, 16, 0, Math.PI * 2);
     const grad = ctx.createRadialGradient(px, py, 2, px, py, 16);
@@ -348,18 +365,25 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.fill();
   }
 
-  /** Master render — clears canvas and draws all layers. */
+  /** Master render — clears canvas and draws all layers.
+   *  IMPORTANT: This function NEVER modifies canvas.width or
+   *  canvas.height.  Those are set only by applyMapScale(). */
   function renderCanvas() {
     const w = DOM.mapCanvas.width;
     const h = DOM.mapCanvas.height;
-    if (w === 0 || h === 0) return;
+    if (w < 1 || h < 1) return;
+
+    /* SAFETY: Force-reset the transform matrix to the identity (1:1)
+       at the start of every frame.  This guarantees no stale rotation
+       or translation leaks from a previous render cycle, even if a
+       drawing function failed to call ctx.restore(). */
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     ctx.clearRect(0, 0, w, h);
     // Dark background fill
     ctx.fillStyle = '#0a0c10';
     ctx.fillRect(0, 0, w, h);
 
-    computeTransform();
     drawGrid();
     drawWaypoints();
     drawPlanter();
@@ -402,9 +426,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const csv = logBufferToCSV();
     if (!csv) { alert('No logged data to export.'); return; }
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
     a.download = `gcs_telemetry_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
     document.body.appendChild(a);
     a.click();
@@ -444,14 +468,24 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('[Mission] START_MISSION sent:', payload);
   });
 
-  /* --- E-STOP (highest priority) --- */
+  /* --- E-STOP (highest priority) ---
+     BUG FIX #3: Strict, dedicated click listener that bypasses the
+     generic wsSend() wrapper.  Directly verifies the WebSocket state
+     and forcefully transmits the exact E-STOP payload. */
   DOM.btnEstop.addEventListener('click', () => {
     const payload = { command: 'ESTOP', pwm: 1500 };
-    wsSend(payload);
-    // Also update UI immediately for responsiveness
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+      console.log('[E-STOP] Emergency command transmitted: ', payload);
+    } else {
+      console.error('[E-STOP] FAILED — WebSocket is not open. readyState:',
+        ws ? ws.readyState : 'null');
+    }
+
+    // Update UI immediately for responsiveness regardless of send result
     state.systemState = 'E-STOP';
     updateTelemetryUI();
-    console.warn('[E-STOP] Emergency stop command sent!');
   });
 
   /* --- U-Turn Test --- */
@@ -477,14 +511,17 @@ document.addEventListener('DOMContentLoaded', () => {
   /* --- Export CSV --- */
   DOM.btnExportCSV.addEventListener('click', downloadCSV);
 
-  /* --- Canvas resize observer --- */
-  const resizeObserver = new ResizeObserver(() => { resizeCanvas(); });
-  resizeObserver.observe(DOM.canvasWrapper);
+  /* --- Apply Map Scale --- */
+  DOM.btnApplyMapScale.addEventListener('click', () => {
+    applyMapScale();
+    console.log('[Mission] Map scale updated by operator.');
+  });
 
   // =========================================================================
-  // 10. INITIALISATION
+  // 11. INITIALISATION
   // =========================================================================
-  resizeCanvas();
+  /* Apply the default field dimensions (50 × 50 m) on first load */
+  applyMapScale();
   wsConnect();
   console.log('[GCS] Ground Control Station initialised.');
 });

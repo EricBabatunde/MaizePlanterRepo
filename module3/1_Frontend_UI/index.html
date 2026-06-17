@@ -94,6 +94,19 @@
         <input type="number" id="inputRowSpacing" value="0.75" min="0.3" max="2.0" step="0.05">
       </div>
 
+      <!-- Field Dimensions for Static Map Scaling -->
+      <div class="input-group" id="groupFieldWidth">
+        <label for="inputFieldWidth">Field Width (m)</label>
+        <input type="number" id="inputFieldWidth" value="50" min="1" max="500" step="1">
+      </div>
+
+      <div class="input-group" id="groupFieldLength">
+        <label for="inputFieldLength">Field Length (m)</label>
+        <input type="number" id="inputFieldLength" value="50" min="1" max="500" step="1">
+      </div>
+
+      <button class="btn btn--secondary" id="btnApplyMapScale">Apply Map Scale</button>
+
       <!-- Waypoint Upload Area -->
       <div class="waypoint-upload" id="groupWaypoints">
         <label for="inputWaypoints">Waypoints (X, Y per line)</label>

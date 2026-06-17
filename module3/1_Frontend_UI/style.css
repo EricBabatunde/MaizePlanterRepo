@@ -44,6 +44,9 @@
   --estop-bg:             #b91c1c;
   --estop-bg-hover:       #dc2626;
   --estop-shadow:         0 0 30px rgba(248, 81, 73, 0.5);
+
+  /* Safe-area padding for the fixed E-STOP bar on mobile */
+  --estop-safe-area:      0px;
 }
 
 
@@ -70,9 +73,11 @@ body {
   color: var(--colour-text-primary);
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-  /* Prevent any scrollbars — kiosk-style GCS layout */
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: var(--estop-safe-area);
+  /* Scrollable by default — ensures all panels are reachable on all screen sizes */
 }
 
 
@@ -384,17 +389,18 @@ main#mainGrid {
 .canvas-wrapper {
   flex: 1;
   position: relative;
+  width: 100%;
+  max-width: 100%;
   background-color: var(--colour-bg-body);
   border: 1px solid var(--colour-border);
   border-radius: var(--radius-md);
-  overflow: hidden;
-  min-height: 0;
+  overflow: auto;
 }
 
 #mapCanvas {
   display: block;
-  width: 100%;
-  height: 100%;
+  /* Canvas buffer dimensions are set by applyMapScale() in script.js.
+     No CSS percentage sizing — prevents the infinite resize loop. */
 }
 
 
@@ -554,43 +560,7 @@ main#mainGrid {
 
 
 /* ---------------------------------------------------------------------------
-   14. RESPONSIVE — Tablet / Narrow Screens
+   14. RESPONSIVE — DISABLED
+   Mobile responsiveness halted by Engineering Lead to stabilise the
+   fixed-dimension desktop layout and eliminate the canvas resize loop.
    --------------------------------------------------------------------------- */
-@media (max-width: 960px) {
-  main#mainGrid {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto 1fr;
-    grid-template-areas:
-      "telemetry  mission"
-      "diagnostics diagnostics"
-      "map         map";
-  }
-
-  .btn--estop {
-    font-size: 1.3rem;
-    padding: 0.8rem 1.5rem;
-  }
-}
-
-@media (max-width: 600px) {
-  main#mainGrid {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto 1fr;
-    grid-template-areas:
-      "telemetry"
-      "mission"
-      "diagnostics"
-      "map";
-  }
-
-  header#headerBar {
-    flex-direction: column;
-    gap: 0.5rem;
-    text-align: center;
-  }
-
-  .header-indicators {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-}
