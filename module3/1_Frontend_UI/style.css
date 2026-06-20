@@ -63,6 +63,9 @@
 
 html {
   font-size: 14px;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -73,11 +76,12 @@ body {
   color: var(--colour-text-primary);
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding-bottom: var(--estop-safe-area);
-  /* Scrollable by default — ensures all panels are reachable on all screen sizes */
+  width: 100vw;
+  height: 100vh;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Locked to viewport — no vertical scrolling. Horizontal scroll enabled
+     for narrow screens that cannot fit the minimum grid width. */
 }
 
 
@@ -181,6 +185,8 @@ header#headerBar h1 {
 main#mainGrid {
   flex: 1;
   display: grid;
+  /* Minimum 260px for side panels; map stretches to fill.  On desktop
+     the entire grid fits within the viewport without scrolling. */
   grid-template-columns: 260px 260px 1fr;
   grid-template-rows: 1fr 1fr;
   grid-template-areas:
@@ -190,6 +196,9 @@ main#mainGrid {
   background-color: var(--colour-border);
   overflow: hidden;
   min-height: 0;
+  min-width: 900px;
+  /* min-width ensures the grid never collapses below a usable size;
+     body overflow-x: auto allows horizontal scrolling on small screens. */
 }
 
 

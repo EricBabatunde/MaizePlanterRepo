@@ -83,6 +83,8 @@ void processMavlinkMessage(mavlink_message_t* msg) {
             mavlink_vfr_hud_t hud;
             mavlink_msg_vfr_hud_decode(msg, &hud);
             current_speed_ms = hud.groundspeed;
+            // DEBUG: Print raw ground speed for engineering verification
+            Serial.printf("[MAVLink] Raw Ground Speed: %.2f m/s\n", hud.groundspeed);
             break;
         }
         case MAVLINK_MSG_ID_MISSION_REQUEST: {

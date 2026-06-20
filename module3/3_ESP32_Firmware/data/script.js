@@ -196,91 +196,156 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // =========================================================================
-  // 6. CANVAS RENDERER MODULE — Fixed PPM with Bottom-Left Origin
+  // 6. CANVAS RENDERER MODULE — Padded PPM with Bottom-Left Origin
   // =========================================================================
-  const GRID_COLOUR = 'rgba(255,255,255,0.06)';
-  const AXIS_COLOUR = 'rgba(255,255,255,0.15)';
-  const WP_COLOUR = '#58a6ff';
+
+  /* Global canvas padding in pixels — ensures the field boundary never
+     touches the edge of the canvas on any side.  All coordinate transforms
+     account for this offset so that field origin (0, 0) sits exactly at
+     (PADDING, canvas.height − PADDING) on screen. */
+  const PADDING = 50;
+
+  const GRID_COLOUR    = 'rgba(255,255,255,0.06)';
+  const AXIS_COLOUR    = 'rgba(255,255,255,0.15)';
+  const WP_COLOUR      = '#58a6ff';
   const WP_LINE_COLOUR = 'rgba(88,166,255,0.3)';
   const PLANTER_COLOUR = '#3fb950';
-  const TRAIL_COLOUR = 'rgba(63,185,80,0.25)';
+  const TRAIL_COLOUR   = 'rgba(63,185,80,0.25)';
+  const FIELD_BORDER_COLOUR    = 'rgba(63,185,80,0.7)';
+  const FIELD_FILL_COLOUR      = 'rgba(63,185,80,0.04)';
 
   /**
    * Apply the user-defined farmland dimensions to the canvas.
-   * Calculates a fixed Pixels-Per-Metre (PPM) scale and sets the
-   * canvas buffer size to maintain the physical aspect ratio of
-   * the field.  This replaces all previous dynamic auto-zoom logic.
+   * Calculates a fixed Pixels-Per-Metre (PPM) scale that fits
+   * the entire field WITHIN the padded drawable area, maintaining
+   * the physical aspect ratio.
+   *
+   * The drawable area is:
+   *   drawableWidth  = containerWidth  − (2 × PADDING)
+   *   drawableHeight = containerHeight − (2 × PADDING)
+   *
+   * PPM is the smaller of (drawableWidth / fieldWidth) and
+   * (drawableHeight / fieldLength) so the field always fits
+   * without distortion.
    */
   function applyMapScale() {
-    const fieldW = parseFloat(DOM.inputFieldWidth.value) || 50;
+    const fieldW = parseFloat(DOM.inputFieldWidth.value)  || 50;
     const fieldL = parseFloat(DOM.inputFieldLength.value) || 50;
 
-    state.fieldWidth = fieldW;
+    state.fieldWidth  = fieldW;
     state.fieldLength = fieldL;
 
-    /* PPM is derived from the container's CSS width and the field width */
-    const containerWidth = DOM.canvasWrapper.clientWidth;
-    if (containerWidth < 1) return;
+    /* Use the wrapper's CSS dimensions as the canvas buffer size */
+    const containerWidth  = DOM.canvasWrapper.clientWidth;
+    const containerHeight = DOM.canvasWrapper.clientHeight;
+    if (containerWidth < 1 || containerHeight < 1) return;
 
-    state.ppm = containerWidth / fieldW;
+    /* Set canvas buffer to exactly fill the wrapper */
+    DOM.mapCanvas.width  = containerWidth;
+    DOM.mapCanvas.height = containerHeight;
 
-    /* Set canvas buffer dimensions — width fills the container;
-       height is proportional to the field length in metres */
-    DOM.mapCanvas.width = containerWidth;
-    DOM.mapCanvas.height = Math.round(fieldL * state.ppm);
+    /* Calculate the drawable area after removing padding from all sides */
+    const drawableW = containerWidth  - (2 * PADDING);
+    const drawableH = containerHeight - (2 * PADDING);
+    if (drawableW < 1 || drawableH < 1) return;
 
-    console.log(`[Map] Scale applied — Field: ${fieldW}×${fieldL} m, PPM: ${state.ppm.toFixed(2)}, Canvas: ${DOM.mapCanvas.width}×${DOM.mapCanvas.height} px`);
+    /* PPM = whichever axis is tighter, so the field fits entirely */
+    state.ppm = Math.min(drawableW / fieldW, drawableH / fieldL);
+
+    console.log(`[Map] Scale applied — Field: ${fieldW}×${fieldL} m, PPM: ${state.ppm.toFixed(2)}, Canvas: ${DOM.mapCanvas.width}×${DOM.mapCanvas.height} px, Padding: ${PADDING}px`);
     renderCanvas();
   }
 
   /**
-   * Convert field coordinates (metres) to canvas pixel coordinates
-   * using the fixed PPM scale with a bottom-left origin.
-   *   PixelX = TelemetryX × PPM
-   *   PixelY = canvas.height − (TelemetryY × PPM)
+   * Convert field coordinates (metres) to canvas pixel coordinates.
+   *
+   * The origin (0, 0) of the mathematical field is placed at:
+   *   screenX = PADDING
+   *   screenY = canvas.height − PADDING
+   *
+   * So the full transform is:
+   *   PixelX = PADDING + (fieldX × PPM)
+   *   PixelY = (canvas.height − PADDING) − (fieldY × PPM)
+   *
+   * This guarantees PADDING pixels of clearance on all four sides.
    */
   function toCanvas(x, y) {
     return [
-      x * state.ppm,
-      DOM.mapCanvas.height - (y * state.ppm),
+      PADDING + (x * state.ppm),
+      (DOM.mapCanvas.height - PADDING) - (y * state.ppm),
     ];
   }
 
   /**
-   * Draw a static reference grid at fixed metre increments.
-   * Uses 1 m lines when PPM ≥ 10, otherwise 5 m lines.
+   * Draw a highly visible rectangular boundary box representing the
+   * exact edges of the farmland (0,0) to (fieldWidth, fieldLength).
+   * Rendered as a green border with a subtle translucent fill so the
+   * operator can clearly see where the field begins and ends.
+   */
+  function drawFieldBoundary() {
+    const [x0, y0] = toCanvas(0, 0);                           // bottom-left
+    const [x1, y1] = toCanvas(state.fieldWidth, state.fieldLength); // top-right
+
+    const rectX = x0;
+    const rectY = y1;    // y1 is higher on screen (smaller pixel value)
+    const rectW = x1 - x0;
+    const rectH = y0 - y1;
+
+    // Translucent fill
+    ctx.fillStyle = FIELD_FILL_COLOUR;
+    ctx.fillRect(rectX, rectY, rectW, rectH);
+
+    // Visible green border
+    ctx.strokeStyle = FIELD_BORDER_COLOUR;
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(rectX, rectY, rectW, rectH);
+
+    // Corner labels for field extents
+    ctx.fillStyle = 'rgba(63,185,80,0.6)';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('(0, 0)', x0 + 4, y0 - 4);
+    ctx.fillText(`(${state.fieldWidth}, ${state.fieldLength})`, x1 - 60, y1 + 14);
+  }
+
+  /**
+   * Draw a static reference grid at fixed metre increments within
+   * the padded field area.  Uses 1 m lines when PPM ≥ 10, otherwise
+   * 5 m lines to avoid visual clutter on large fields.
    */
   function drawGrid() {
-    const w = DOM.mapCanvas.width;
-    const h = DOM.mapCanvas.height;
     const step = state.ppm >= 10 ? 1 : 5; // metres per grid line
 
     ctx.strokeStyle = GRID_COLOUR;
-    ctx.lineWidth = 1;
-    ctx.font = '10px sans-serif';
-    ctx.fillStyle = AXIS_COLOUR;
+    ctx.lineWidth   = 1;
+    ctx.font        = '10px sans-serif';
+    ctx.fillStyle   = AXIS_COLOUR;
+
+    /* Grid boundaries in pixel space */
+    const [xMin, yMax] = toCanvas(0, 0);                             // bottom-left
+    const [xMax, yMin] = toCanvas(state.fieldWidth, state.fieldLength); // top-right
 
     // Vertical grid lines (X-axis, left to right)
     for (let gx = 0; gx <= state.fieldWidth; gx += step) {
-      const px = gx * state.ppm;
-      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
-      ctx.fillText(`${gx}m`, px + 3, h - 4);
+      const [px] = toCanvas(gx, 0);
+      ctx.beginPath(); ctx.moveTo(px, yMin); ctx.lineTo(px, yMax); ctx.stroke();
+      ctx.fillText(`${gx}m`, px + 3, yMax - 4);
     }
 
     // Horizontal grid lines (Y-axis, bottom to top)
     for (let gy = 0; gy <= state.fieldLength; gy += step) {
-      const py = h - (gy * state.ppm);
-      ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(w, py); ctx.stroke();
-      ctx.fillText(`${gy}m`, 4, py - 3);
+      const [, py] = toCanvas(0, gy);
+      ctx.beginPath(); ctx.moveTo(xMin, py); ctx.lineTo(xMax, py); ctx.stroke();
+      ctx.fillText(`${gy}m`, xMin + 4, py - 3);
     }
 
     // Draw origin axes (X=0 and Y=0) slightly brighter
     ctx.strokeStyle = AXIS_COLOUR;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth   = 1.5;
     // X=0 vertical axis
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, h); ctx.stroke();
-    // Y=0 horizontal axis (bottom of canvas)
-    ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(w, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xMin, yMin); ctx.lineTo(xMin, yMax); ctx.stroke();
+    // Y=0 horizontal axis (bottom of field)
+    ctx.beginPath(); ctx.moveTo(xMin, yMax); ctx.lineTo(xMax, yMax); ctx.stroke();
   }
 
   /** Draw waypoint markers and connecting lines. */
@@ -290,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Connecting lines
     ctx.strokeStyle = WP_LINE_COLOUR;
-    ctx.lineWidth = 2;
+    ctx.lineWidth   = 2;
     ctx.setLineDash([6, 4]);
     ctx.beginPath();
     wps.forEach((wp, i) => {
@@ -345,7 +410,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.beginPath();
     ctx.moveTo(size, 0);
     ctx.lineTo(-size * 0.6, -size * 0.5);
-    ctx.lineTo(-size * 0.6, size * 0.5);
+    ctx.lineTo(-size * 0.6,  size * 0.5);
     ctx.closePath();
     ctx.fillStyle = PLANTER_COLOUR;
     ctx.fill();
@@ -384,6 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.fillStyle = '#0a0c10';
     ctx.fillRect(0, 0, w, h);
 
+    drawFieldBoundary();
     drawGrid();
     drawWaypoints();
     drawPlanter();

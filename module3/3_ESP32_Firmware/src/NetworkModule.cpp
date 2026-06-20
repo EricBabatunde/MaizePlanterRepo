@@ -29,6 +29,9 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
         // Ensure the entire message is contained in one frame
         if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
             data[len] = 0; // Null-terminate the string for safety
+
+            // DEBUG: Print the raw incoming payload BEFORE JSON parsing
+            Serial.printf("[WS] Raw incoming payload: %s\n", (char*)data);
             
             // Allocate a strict memory limit for the incoming JSON
             // 8192 bytes allows for a substantial number of waypoints
@@ -94,8 +97,26 @@ void Network_Init() {
         Serial.println("[Network] LittleFS Mounted Successfully.");
     }
 
-    // Serve static files from LittleFS
-    server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+    // Serve static files from LittleFS — explicit routes to prevent
+    // ESPAsyncWebServer from searching for non-existent .gz variants.
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(LittleFS, "/index.html", "text/html");
+    });
+    server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(LittleFS, "/index.html", "text/html");
+    });
+    server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(LittleFS, "/style.css", "text/css");
+    });
+    server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(LittleFS, "/script.js", "application/javascript");
+    });
+    server.on("/geo_math.js", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(LittleFS, "/geo_math.js", "application/javascript");
+    });
+    server.on("/path_planner.js", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(LittleFS, "/path_planner.js", "application/javascript");
+    });
 
     // Setup WebSocket
     ws.onEvent(onEvent);
