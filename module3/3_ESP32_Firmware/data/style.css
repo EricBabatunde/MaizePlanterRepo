@@ -501,15 +501,39 @@ main#mainGrid {
 /* ---------------------------------------------------------------------------
    12. E-STOP BAR — Persistent emergency stop
    --------------------------------------------------------------------------- */
-.estop-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #1a0000;
-  border-top: 2px solid var(--estop-bg);
-  padding: 0.5rem 1rem;
-  flex-shrink: 0;
-  z-index: 200;
+/* Desktop styling: Fixed at the bottom of the viewport, full width */
+@media (min-width: 769px) {
+  body {
+    padding-bottom: 76px; /* Reserve space for the fixed E-STOP bar */
+  }
+  .estop-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #1a0000;
+    border-top: 2px solid var(--estop-bg);
+    padding: 0.5rem 1rem;
+    z-index: 200;
+  }
+}
+
+/* Mobile styling: In-flow within the Telemetry panel */
+@media (max-width: 768px) {
+  .estop-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: auto; /* Pushes the button to the bottom of the Flexbox panel */
+    padding-top: 2rem; /* Visual breathing room above the button */
+    padding-bottom: 1rem;
+    background-color: transparent;
+    border-top: none;
+    z-index: 200;
+  }
 }
 
 .btn--estop {

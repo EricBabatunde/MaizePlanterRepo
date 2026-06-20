@@ -80,6 +80,16 @@
         <span class="telemetry-card__label">Position (X, Y)</span>
         <span class="telemetry-card__value" id="valPosition">0.0 , 0.0</span>
       </div>
+
+      <!-- ===================================================================
+           SAFETY LAYER — Persistent E-STOP Button
+           Moved to Telemetry Panel for mobile layout flow
+           =================================================================== -->
+      <div class="estop-bar" id="estopBar">
+        <button class="btn--estop" id="btnEstop" aria-label="Emergency Stop">
+          E-STOP
+        </button>
+      </div>
     </section>
 
     <!-- ---------------------------------------------------------------
@@ -159,15 +169,6 @@
       <p class="log-counter">Logged samples: <span id="valLogCount">0</span></p>
     </section>
   </main>
-
-  <!-- ===================================================================
-       SAFETY LAYER — Persistent E-STOP Button
-       =================================================================== -->
-  <div class="estop-bar" id="estopBar">
-    <button class="btn--estop" id="btnEstop" aria-label="Emergency Stop">
-      E-STOP
-    </button>
-  </div>
 
   <!-- Main application script (no frameworks) -->
   <script src="script.js"></script>
