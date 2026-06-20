@@ -1,47 +1,53 @@
 #include <Arduino.h>
-#include "telemetry_mqtt.h"
-#include "waypoint_manager.h"
-#include "motor_control.h" // NEW INCLUSION
+#include "NetworkModule.h"
+#include "MavlinkModule.h"
 
-unsigned long lastTelemetryMillis = 0;
+// Task Handles
+TaskHandle_t NetworkTaskHandle = NULL;
+TaskHandle_t MavlinkTaskHandle = NULL;
 
-void setup()
-{
-  Serial.begin(115200);
-  Serial.setTimeout(0);
-  delay(1000);
+void setup() {
+    // Initialize standard Serial for debugging
+    Serial.begin(115200);
+    while (!Serial); // Wait for native USB serial (if applicable)
+    
+    Serial.println("\n\n========================================================");
+    Serial.println("   MAIZE PLANTER — EMBEDDED GCS FIRMWARE (ESP32-S3)");
+    Serial.println("========================================================\n");
 
-  Serial.println("\n====================================");
-  Serial.println(" MAIZE-PRO GCS FIRMWARE: STAGE 3 FINAL ");
-  Serial.println("====================================\n");
+    // 1. Initialize Subsystems
+    Network_Init();
+    Mavlink_Init();
 
-  // Initialize Modules
-  setupNetwork();
-  setupMavlink();
-  setupMotors(); // NEW: Initialise the interrupts and drivers
+    // 2. Spawn FreeRTOS Tasks
+    // Map Wi-Fi, Web Server, and WebSocket Handling to Core 0
+    xTaskCreatePinnedToCore(
+        Network_Task,
+        "NetworkTask",
+        8192,           // Stack size (words)
+        NULL,           // Parameter
+        1,              // Priority
+        &NetworkTaskHandle,
+        0               // Core ID
+    );
 
-  // Enable the drivers after setup is complete
-  digitalWrite(PIN_EN, HIGH);
+    // Map HardwareSerial parsing and MAVLink State Machine to Core 1
+    // Given priority 2 to ensure we never drop incoming serial bytes
+    xTaskCreatePinnedToCore(
+        Mavlink_Task,
+        "MavlinkTask",
+        8192,           // Stack size (words)
+        NULL,           // Parameter
+        2,              // Priority
+        &MavlinkTaskHandle,
+        1               // Core ID
+    );
+
+    Serial.println("[System] FreeRTOS Tasks spawned successfully. Entering OS loop.");
 }
 
-void loop()
-{
-  // 1. Maintain Wi-Fi and MQTT
-  loopNetwork();
-
-  // 2. Maintain MAVLink connection to Pixhawk
-  loopMavlink();
-
-  // 3. Update Motor PWMs (Lightning Fast, Non-Blocking)
-  loopMotors();
-
-  // 4. Publish LIVE Telemetry to Web UI (1 Hz)
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastTelemetryMillis >= 1000)
-  {
-    lastTelemetryMillis = currentMillis;
-
-    // Pass the live variables extracted from MAVLink straight to MQTT
-    publishLiveTelemetry("AUTO DRIVING", currentSpeed, currentHeading, currentLat, currentLon);
-  }
+void loop() {
+    // The main loop is unused. We delete this task to free up memory
+    // as all processing is handled by our two pinned FreeRTOS tasks.
+    vTaskDelete(NULL);
 }

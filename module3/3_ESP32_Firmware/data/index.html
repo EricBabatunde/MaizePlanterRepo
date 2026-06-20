@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Ground Control Station for the Autonomous Smart Maize Planter — real-time telemetry, mission planning, and diagnostics.">
+  <title>Maize Planter GCS</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <!-- ===================================================================
+       HEADER BAR — Global system status indicators
+       =================================================================== -->
+  <header id="headerBar">
+    <h1>Autonomous Smart Maize Planter</h1>
+    <div class="header-indicators">
+      <!-- Connection Status Indicator (LED dot + label) -->
+      <div class="indicator" id="indicatorConnection">
+        <span class="led led--disconnected" id="ledConnection"></span>
+        <span class="indicator__label">Link</span>
+        <span class="indicator__value" id="valConnection">Disconnected</span>
+      </div>
+
+      <!-- Latency Indicator -->
+      <div class="indicator" id="indicatorLatency">
+        <span class="indicator__label">Latency</span>
+        <span class="indicator__value" id="valLatency">— ms</span>
+      </div>
+
+      <!-- Battery Voltage Indicator -->
+      <div class="indicator" id="indicatorBattery">
+        <span class="indicator__label">Battery</span>
+        <span class="indicator__value" id="valBattery">— V</span>
+      </div>
+
+      <!-- GPS Fix Status Indicator -->
+      <div class="indicator" id="indicatorGPS">
+        <span class="led led--no-fix" id="ledGPS"></span>
+        <span class="indicator__label">GPS</span>
+        <span class="indicator__value" id="valGPS">No Fix</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================================
+       MAIN GRID — Four logical panels
+       =================================================================== -->
+  <main id="mainGrid">
+
+    <!-- ---------------------------------------------------------------
+         PANEL 1 — Telemetry Dashboard
+         --------------------------------------------------------------- -->
+    <section class="panel panel--telemetry" id="panelTelemetry">
+      <h2 class="panel__title">Telemetry</h2>
+
+      <div class="telemetry-card" id="cardState">
+        <span class="telemetry-card__label">System State</span>
+        <span class="telemetry-card__value badge badge--idle" id="valState">IDLE</span>
+      </div>
+
+      <div class="telemetry-card" id="cardSpeed">
+        <span class="telemetry-card__label">Ground Speed</span>
+        <span class="telemetry-card__value" id="valSpeed">0.00 <small>m/s</small></span>
+      </div>
+
+      <div class="telemetry-card" id="cardHeading">
+        <span class="telemetry-card__label">Heading</span>
+        <span class="telemetry-card__value" id="valHeading">0.0<small>°</small></span>
+      </div>
+
+      <div class="telemetry-card" id="cardWpDist">
+        <span class="telemetry-card__label">WP Distance</span>
+        <span class="telemetry-card__value" id="valWpDist">— <small>m</small></span>
+      </div>
+
+      <div class="telemetry-card" id="cardPosition">
+        <span class="telemetry-card__label">Position (X, Y)</span>
+        <span class="telemetry-card__value" id="valPosition">0.0 , 0.0</span>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------
+         PANEL 2 — Mission Control
+         --------------------------------------------------------------- -->
+    <section class="panel panel--mission" id="panelMission">
+      <h2 class="panel__title">Mission Control</h2>
+
+      <!-- Row Spacing Input -->
+      <div class="input-group" id="groupRowSpacing">
+        <label for="inputRowSpacing">Row Spacing (m)</label>
+        <input type="number" id="inputRowSpacing" value="0.75" min="0.3" max="2.0" step="0.05">
+      </div>
+
+      <!-- Field Dimensions for Static Map Scaling -->
+      <div class="input-group" id="groupFieldWidth">
+        <label for="inputFieldWidth">Field Width (m)</label>
+        <input type="number" id="inputFieldWidth" value="50" min="1" max="500" step="1">
+      </div>
+
+      <div class="input-group" id="groupFieldLength">
+        <label for="inputFieldLength">Field Length (m)</label>
+        <input type="number" id="inputFieldLength" value="50" min="1" max="500" step="1">
+      </div>
+
+      <button class="btn btn--secondary" id="btnApplyMapScale">Apply Map Scale</button>
+
+      <!-- Waypoint Upload Area -->
+      <div class="waypoint-upload" id="groupWaypoints">
+        <label for="inputWaypoints">Waypoints (X, Y per line)</label>
+        <textarea id="inputWaypoints" rows="6"
+          placeholder="e.g.&#10;0, 0&#10;10, 0&#10;10, 0.75&#10;0, 0.75"></textarea>
+        <button class="btn btn--secondary" id="btnUploadWaypoints">Upload Waypoints</button>
+      </div>
+
+      <!-- Mission Buttons -->
+      <button class="btn btn--primary" id="btnStartMission">
+        <span class="btn__icon">▶</span> Start Mission
+      </button>
+    </section>
+
+    <!-- ---------------------------------------------------------------
+         PANEL 3 — 2D Map Canvas
+         --------------------------------------------------------------- -->
+    <section class="panel panel--map" id="panelMap">
+      <h2 class="panel__title">2D Field Map</h2>
+      <div class="canvas-wrapper" id="canvasWrapper">
+        <canvas id="mapCanvas"></canvas>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------
+         PANEL 4 — Testing & Diagnostics
+         --------------------------------------------------------------- -->
+    <section class="panel panel--diagnostics" id="panelDiagnostics">
+      <h2 class="panel__title">Testing &amp; Diagnostics</h2>
+
+      <button class="btn btn--secondary" id="btnUTurnTest">
+        Trigger Autonomous U-Turn Test
+      </button>
+
+      <!-- Data Logging Toggle -->
+      <div class="toggle-group" id="groupLogging">
+        <label class="toggle-label" for="toggleLogging">Data Logging</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggleLogging">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-status" id="loggingStatus">OFF</span>
+      </div>
+
+      <button class="btn btn--secondary" id="btnExportCSV">
+        Export CSV
+      </button>
+
+      <!-- Log Counter -->
+      <p class="log-counter">Logged samples: <span id="valLogCount">0</span></p>
+    </section>
+  </main>
+
+  <!-- ===================================================================
+       SAFETY LAYER — Persistent E-STOP Button
+       =================================================================== -->
+  <div class="estop-bar" id="estopBar">
+    <button class="btn--estop" id="btnEstop" aria-label="Emergency Stop">
+      E-STOP
+    </button>
+  </div>
+
+  <!-- Main application script (no frameworks) -->
+  <script src="script.js"></script>
+</body>
+
+</html>
