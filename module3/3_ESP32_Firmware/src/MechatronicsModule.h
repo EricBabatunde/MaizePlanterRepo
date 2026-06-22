@@ -3,7 +3,7 @@
    MECHATRONICS MODULE — MechatronicsModule.h
    Autonomous Smart Maize Planter — Phase 3 Direct-Drive Architecture
    Controls: Seeding Mechanism (BTS7960), Furrow Actuator (BTS7960),
-             AS5048A Magnetic Encoder (SPI)
+             AS5048A Magnetic Encoder (PWM output mode)
    The Pixhawk handles all drive-motor logic directly via ArduRover.
    ============================================================================= */
 
@@ -21,11 +21,10 @@
 #define ACTUATOR_RPWM       47      // Deploy direction
 #define ACTUATOR_LPWM       48      // Retract direction
 
-// AS5048A Magnetic Encoder — SPI Interface
-#define ENCODER_CS          3       // Chip Select
-#define ENCODER_MISO        9       // Master In Slave Out
-#define ENCODER_MOSI        10      // Master Out Slave In
-#define ENCODER_SCK         21      // Serial Clock
+// AS5048A Magnetic Encoder — PWM Output Mode
+// The encoder outputs a PWM signal whose duty cycle maps to 0–359°.
+// Read via a non-blocking ISR on CHANGE to avoid blocking FreeRTOS tasks.
+#define ENCODER_PWM_PIN     9
 
 // MAVLink UART (defined in MavlinkModule — listed here for reference only)
 // #define PIXHAWK_RX_PIN   4
@@ -50,6 +49,15 @@
 #define SEED_RATE_FACTOR    100.0f
 
 // ---------------------------------------------------------------------------
+// 3b. EMA LOW-PASS FILTER
+// ---------------------------------------------------------------------------
+// Exponential Moving Average smoothing factor for encoder RPM.
+// Lower values = heavier smoothing (less responsive, less jitter).
+// Higher values = lighter smoothing (more responsive, more jitter).
+// Tuneable during field calibration.
+#define EMA_ALPHA           0.2f
+
+// ---------------------------------------------------------------------------
 // 4. LEDC PWM CONFIGURATION
 // ---------------------------------------------------------------------------
 #define LEDC_CHANNEL_SEED   0       // LEDC channel for seed motor
@@ -72,7 +80,7 @@ enum PlanterState {
 // 6. PUBLIC API
 // ---------------------------------------------------------------------------
 
-/// Initialise GPIO pins, LEDC PWM channels, and the SPI bus for the encoder.
+/// Initialise GPIO pins, LEDC PWM channels, and encoder PWM interrupt.
 void Mechatronics_Init();
 
 /// Run the finite state machine. Must be called rapidly (every ~10ms).

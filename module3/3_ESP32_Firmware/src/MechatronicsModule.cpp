@@ -5,14 +5,13 @@
    Responsibilities:
      1. Finite State Machine for furrow actuator sequencing
      2. PID-controlled seeding motor synchronised to ground speed
-     3. AS5048A magnetic encoder reading via SPI
+     3. AS5048A magnetic encoder reading via PWM output (non-blocking ISR)
 
    The Pixhawk handles ALL drive-motor logic directly. This module contains
    ABSOLUTELY NO drive-motor passthrough logic.
    ============================================================================= */
 
 #include "MechatronicsModule.h"
-#include <SPI.h>
 
 // ---------------------------------------------------------------------------
 // 1. INTERNAL STATE
@@ -28,19 +27,110 @@ static float pidPrevError  = 0.0f;
 static unsigned long pidLastTime = 0;
 
 // Encoder state for RPM calculation
-static uint16_t prevAngle       = 0;
+static float prevAngleDeg       = 0.0f;
 static unsigned long prevAngleTime = 0;
 static float currentRPM         = 0.0f;
-
-// Custom SPI instance for the AS5048A (avoids conflict with default SPI)
-static SPIClass encoderSPI(HSPI);
-static const SPISettings encoderSPISettings(1000000, MSBFIRST, SPI_MODE1);
-
-// AS5048A command to read the angle register (address 0x3FFF with parity)
-static const uint16_t AS5048A_CMD_ANGLE = 0xFFFF;
+static float smoothedRPM        = 0.0f;  // EMA-filtered RPM for PID input
 
 // ---------------------------------------------------------------------------
-// 2. INTERNAL HELPERS
+// 2. AS5048A PWM ENCODER — NON-BLOCKING ISR
+// ---------------------------------------------------------------------------
+// The AS5048A PWM output has a period of approximately 4096µs (244 Hz).
+// Duty cycle maps linearly to 0–359°.
+// We use an ISR on CHANGE to capture RISING and FALLING timestamps without
+// ever blocking a FreeRTOS task (pulseIn() is forbidden).
+
+static volatile unsigned long isrRisingTime  = 0;  // µs timestamp of last RISING edge
+static volatile unsigned long isrHighTime    = 0;  // µs duration of the HIGH pulse
+static volatile unsigned long isrPeriod      = 0;  // µs duration of the full PWM period
+static volatile bool          isrNewData     = false;
+
+/// ISR — must be in IRAM to avoid flash-cache misses during execution.
+static void IRAM_ATTR encoderPWM_ISR() {
+    unsigned long now = esp_timer_get_time(); // Microseconds, 64-bit safe on ESP32
+
+    if (digitalRead(ENCODER_PWM_PIN) == HIGH) {
+        // RISING edge — record the timestamp and compute the period from
+        // the previous RISING edge (if available)
+        if (isrRisingTime > 0) {
+            isrPeriod = now - isrRisingTime;
+        }
+        isrRisingTime = now;
+    } else {
+        // FALLING edge — compute the HIGH pulse width
+        if (isrRisingTime > 0) {
+            isrHighTime = now - isrRisingTime;
+            isrNewData  = true;
+        }
+    }
+}
+
+/// Convert the ISR's pulse-width data into an angle in degrees (0.0–359.0).
+/// Returns the angle, or -1.0 if no new data is available.
+static float readEncoderAngleDeg() {
+    // Atomically snapshot the volatile ISR variables
+    noInterrupts();
+    unsigned long highTime = isrHighTime;
+    unsigned long period   = isrPeriod;
+    bool          newData  = isrNewData;
+    isrNewData = false;
+    interrupts();
+
+    if (!newData || period == 0) return -1.0f;
+
+    // Duty cycle → angle: (highTime / period) × 360°
+    float dutyCycle = (float)highTime / (float)period;
+
+    // Clamp duty cycle to [0.0, 1.0] to guard against ISR timing artefacts
+    if (dutyCycle < 0.0f) dutyCycle = 0.0f;
+    if (dutyCycle > 1.0f) dutyCycle = 1.0f;
+
+    return dutyCycle * 360.0f;
+}
+
+/// Calculate real-time RPM from the PWM angle readings.
+/// Handles the 359°→0° wrap-around gracefully and applies the EMA filter.
+static void calculateRPM() {
+    float angleDeg = readEncoderAngleDeg();
+    if (angleDeg < 0.0f) return; // No new encoder data available
+
+    unsigned long now = millis();
+    unsigned long dt = now - prevAngleTime;
+    if (dt < 10) return; // Avoid division by zero / noisy short intervals
+
+    // --- Wrap-Around Filter ---
+    // Calculate the shortest angular distance, accounting for the fact that
+    // the seed plate continuously rotates and the angle jumps 359°→0°.
+    float delta = angleDeg - prevAngleDeg;
+
+    // If the absolute delta exceeds 180°, we have crossed the wrap boundary.
+    // Correct by adding/subtracting a full revolution.
+    if (delta > 180.0f) {
+        delta -= 360.0f;   // e.g. 350→10 gives delta = -340 → corrected to +20
+    } else if (delta < -180.0f) {
+        delta += 360.0f;   // e.g. 10→350 gives delta = +340 → corrected to -20
+    }
+
+    // Convert to RPM:
+    //   |delta| / 360.0  = fraction of a full revolution
+    //   dt / 60000.0     = time in minutes
+    //   RPM = (|delta| / 360) / (dt / 60000)
+    float revolutions = fabsf(delta) / 360.0f;
+    float minutes     = (float)dt / 60000.0f;
+    float rawRPM      = revolutions / minutes;
+
+    // --- EMA Low-Pass Filter ---
+    // Smooth out the microsecond jitter inherent in PWM timing measurement.
+    // The PID controller uses smoothedRPM, never the raw reading.
+    smoothedRPM = (EMA_ALPHA * rawRPM) + ((1.0f - EMA_ALPHA) * smoothedRPM);
+    currentRPM  = smoothedRPM;
+
+    prevAngleDeg  = angleDeg;
+    prevAngleTime = now;
+}
+
+// ---------------------------------------------------------------------------
+// 3. INTERNAL HELPERS — ACTUATOR & MOTOR
 // ---------------------------------------------------------------------------
 
 /// Set the furrow actuator outputs.
@@ -71,50 +161,11 @@ static void setSeedMotorPWM(uint8_t duty) {
     digitalWrite(SEED_MOTOR_LPWM, LOW);
 }
 
-/// Read the 14-bit absolute angle from the AS5048A via SPI.
-/// Returns a value in the range [0, 16383].
-static uint16_t readEncoderAngle() {
-    encoderSPI.beginTransaction(encoderSPISettings);
-    digitalWrite(ENCODER_CS, LOW);
-    uint16_t rawData = encoderSPI.transfer16(AS5048A_CMD_ANGLE);
-    digitalWrite(ENCODER_CS, HIGH);
-    encoderSPI.endTransaction();
-
-    // Mask off the top 2 bits (parity + error flag) to get the 14-bit angle
-    return rawData & 0x3FFF;
-}
-
-/// Calculate real-time RPM from the AS5048A angle readings.
-/// Uses the angular displacement between successive calls and the elapsed time.
-static void calculateRPM() {
-    unsigned long now = millis();
-    uint16_t angle = readEncoderAngle();
-
-    unsigned long dt = now - prevAngleTime;
-    if (dt < 10) return; // Avoid division by zero / noisy short intervals
-
-    // Calculate angular displacement (handle wrap-around of 14-bit counter)
-    int32_t delta = (int32_t)angle - (int32_t)prevAngle;
-    if (delta < -8192) delta += 16384;      // Wrapped forward
-    else if (delta > 8192) delta -= 16384;  // Wrapped backward
-
-    // Convert to RPM:
-    //   delta / 16384 = fraction of a full revolution
-    //   dt / 60000.0  = time in minutes
-    //   RPM = (delta / 16384) / (dt / 60000)
-    float revolutions = (float)abs(delta) / 16384.0f;
-    float minutes     = (float)dt / 60000.0f;
-    currentRPM = revolutions / minutes;
-
-    prevAngle     = angle;
-    prevAngleTime = now;
-}
-
 // ---------------------------------------------------------------------------
-// 3. PUBLIC API — INITIALISATION
+// 4. PUBLIC API — INITIALISATION
 // ---------------------------------------------------------------------------
 void Mechatronics_Init() {
-    Serial.println("[Mechatronics] Initialising GPIO, PWM, and SPI...");
+    Serial.println("[Mechatronics] Initialising GPIO, PWM, and encoder ISR...");
 
     // --- Actuator GPIO (simple digital output, no PWM needed) ---
     pinMode(ACTUATOR_RPWM, OUTPUT);
@@ -128,26 +179,25 @@ void Mechatronics_Init() {
     pinMode(SEED_MOTOR_LPWM, OUTPUT);
     setSeedMotorPWM(0); // Start with motor off
 
-    // --- AS5048A Encoder SPI ---
-    pinMode(ENCODER_CS, OUTPUT);
-    digitalWrite(ENCODER_CS, HIGH); // Deselect
-    encoderSPI.begin(ENCODER_SCK, ENCODER_MISO, ENCODER_MOSI, ENCODER_CS);
+    // --- AS5048A Encoder PWM Input ---
+    pinMode(ENCODER_PWM_PIN, INPUT);
+    attachInterrupt(digitalPinToInterrupt(ENCODER_PWM_PIN), encoderPWM_ISR, CHANGE);
 
     // Prime the encoder state
-    prevAngle     = readEncoderAngle();
+    prevAngleDeg  = 0.0f;
     prevAngleTime = millis();
     pidLastTime   = millis();
 
     Serial.println("[Mechatronics] Initialisation complete. State: IDLE.");
     Serial.printf("  Seed Motor: R_PWM=%d, L_PWM=%d\n", SEED_MOTOR_RPWM, SEED_MOTOR_LPWM);
     Serial.printf("  Actuator:   R_PWM=%d, L_PWM=%d\n", ACTUATOR_RPWM, ACTUATOR_LPWM);
-    Serial.printf("  Encoder:    CS=%d, MISO=%d, MOSI=%d, SCK=%d\n",
-                  ENCODER_CS, ENCODER_MISO, ENCODER_MOSI, ENCODER_SCK);
+    Serial.printf("  Encoder:    PWM_PIN=%d (ISR on CHANGE)\n", ENCODER_PWM_PIN);
     Serial.printf("  Deploy: %d ms, Retract: %d ms\n", ACTUATOR_DEPLOY_MS, ACTUATOR_RETRACT_MS);
+    Serial.printf("  EMA Alpha: %.2f\n", EMA_ALPHA);
 }
 
 // ---------------------------------------------------------------------------
-// 4. PUBLIC API — FINITE STATE MACHINE
+// 5. PUBLIC API — FINITE STATE MACHINE
 // ---------------------------------------------------------------------------
 void updateStateMachine(float groundSpeed, float distToWaypoint,
                         bool waypointReached, bool eStopActive) {
@@ -243,7 +293,7 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
 }
 
 // ---------------------------------------------------------------------------
-// 5. PUBLIC API — PID SEEDING CONTROLLER
+// 6. PUBLIC API — PID SEEDING CONTROLLER
 // ---------------------------------------------------------------------------
 void updateSeedingPID(float groundSpeed) {
     // Only run PID when actively planting
@@ -254,10 +304,11 @@ void updateSeedingPID(float groundSpeed) {
         setSeedMotorPWM(0);
         pidIntegral  = 0.0f;
         pidPrevError = 0.0f;
+        smoothedRPM  = 0.0f;
         return;
     }
 
-    // Read the encoder and compute actual RPM
+    // Read the encoder and compute actual RPM (with wrap-around + EMA)
     calculateRPM();
 
     // Calculate the target RPM proportional to ground speed
@@ -272,8 +323,8 @@ void updateSeedingPID(float groundSpeed) {
         dt = 0.01f;
     }
 
-    // PID error calculation
-    float error = targetRPM - currentRPM;
+    // PID error calculation — uses EMA-smoothed RPM, not raw
+    float error = targetRPM - smoothedRPM;
 
     // Proportional term
     float pTerm = PID_KP * error;
@@ -299,14 +350,14 @@ void updateSeedingPID(float groundSpeed) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. PUBLIC API — STATE GETTERS
+// 7. PUBLIC API — STATE GETTERS
 // ---------------------------------------------------------------------------
 PlanterState Mechatronics_GetState() {
     return currentState;
 }
 
 float Mechatronics_GetSeedRPM() {
-    return currentRPM;
+    return smoothedRPM;
 }
 
 const char* Mechatronics_GetStateString() {
