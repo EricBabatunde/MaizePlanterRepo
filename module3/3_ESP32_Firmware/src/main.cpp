@@ -1,23 +1,27 @@
 #include <Arduino.h>
 #include "NetworkModule.h"
 #include "MavlinkModule.h"
+#include "MechatronicsModule.h"
 
 // Task Handles
 TaskHandle_t NetworkTaskHandle = NULL;
 TaskHandle_t MavlinkTaskHandle = NULL;
 
 void setup() {
-    // Initialize standard Serial for debugging
+    // Initialise standard Serial for debugging
     Serial.begin(115200);
     while (!Serial); // Wait for native USB serial (if applicable)
     
     Serial.println("\n\n========================================================");
-    Serial.println("   MAIZE PLANTER — EMBEDDED GCS FIRMWARE (ESP32-S3)");
+    Serial.println("   MAIZE PLANTER — PHASE 3 DIRECT-DRIVE FIRMWARE");
+    Serial.println("   ESP32-S3: Seeding + Actuator + MAVLink Routing");
+    Serial.println("   Pixhawk: Direct drive-motor control via ArduRover");
     Serial.println("========================================================\n");
 
-    // 1. Initialize Subsystems
+    // 1. Initialise Subsystems
     Network_Init();
     Mavlink_Init();
+    Mechatronics_Init();
 
     // 2. Spawn FreeRTOS Tasks
     // Map Wi-Fi, Web Server, and WebSocket Handling to Core 0
@@ -31,12 +35,14 @@ void setup() {
         0               // Core ID
     );
 
-    // Map HardwareSerial parsing and MAVLink State Machine to Core 1
-    // Given priority 2 to ensure we never drop incoming serial bytes
+    // Map HardwareSerial parsing, MAVLink State Machine, and
+    // MechatronicsModule (FSM + PID) to Core 1.
+    // Priority 2 ensures we never drop incoming serial bytes.
+    // Stack increased to 12288 for SPI + PID computation overhead.
     xTaskCreatePinnedToCore(
         Mavlink_Task,
         "MavlinkTask",
-        8192,           // Stack size (words)
+        12288,          // Stack size (words) — increased for Phase 3
         NULL,           // Parameter
         2,              // Priority
         &MavlinkTaskHandle,
@@ -44,6 +50,8 @@ void setup() {
     );
 
     Serial.println("[System] FreeRTOS Tasks spawned successfully. Entering OS loop.");
+    Serial.println("[System] NOTE: Drive motors are controlled DIRECTLY by the Pixhawk.");
+    Serial.println("[System]       This ESP32 manages seeding, actuator, and telemetry ONLY.\n");
 }
 
 void loop() {

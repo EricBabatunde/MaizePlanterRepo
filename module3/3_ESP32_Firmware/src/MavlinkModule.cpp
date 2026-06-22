@@ -1,4 +1,22 @@
+/* =============================================================================
+   MAVLINK MODULE — MavlinkModule.cpp
+   Autonomous Smart Maize Planter — Phase 3 Direct-Drive Architecture
+
+   Responsibilities:
+     1. Parse incoming MAVLink packets from the Pixhawk via HardwareSerial
+     2. Extract telemetry: position, heading, ground speed, waypoint distance
+     3. Detect MISSION_ITEM_REACHED events for FSM synchronisation
+     4. Send 1Hz GCS heartbeat
+     5. Execute E-STOP via RC_CHANNELS_OVERRIDE (Ch 1 & 3 to 1500µs neutral)
+     6. Manage mission upload state machine (MISSION_COUNT/MISSION_ITEM_INT)
+     7. Package telemetry JSON for the WebSocket UI at ~5Hz
+     8. Call MechatronicsModule update functions on every loop iteration
+
+   This module contains ABSOLUTELY NO drive-motor passthrough logic.
+   ============================================================================= */
+
 #include "MavlinkModule.h"
+#include "MechatronicsModule.h"
 #include "NetworkModule.h"
 #include <HardwareSerial.h>
 #include <MAVLink_ardupilotmega.h>
@@ -22,23 +40,26 @@ HardwareSerial PixhawkSerial(1); // Use UART1
 // --- Thread-Safe Shared State ---
 static portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 
-// E-STOP Flag
-static bool estopPending = false;
+// E-STOP Flags
+static bool estopPending = false;    // One-shot trigger for RC override
+static bool eStopActive  = false;    // Latching flag for MechatronicsModule
 
 // Mission Upload State
 static std::vector<Waypoint> pendingMission;
 static bool uploadRequested = false;
 static uint16_t currentMissionSeq = 0;
-enum MissionState { IDLE, SENDING_COUNT, WAITING_REQUEST, SENDING_ITEMS, ACKNOWLEDGED, ERROR };
-static MissionState missionState = IDLE;
+enum MissionState { MS_IDLE, SENDING_COUNT, WAITING_REQUEST, SENDING_ITEMS, ACKNOWLEDGED, MS_ERROR };
+static MissionState missionState = MS_IDLE;
 static unsigned long lastMissionStateChange = 0;
 #define MISSION_TIMEOUT_MS 3000
 
 // Telemetry State
-static int32_t current_lat_1e7 = 0;
-static int32_t current_lon_1e7 = 0;
-static uint16_t current_heading_cd = 0; // centidegrees
-static float current_speed_ms = 0.0f;
+static int32_t current_lat_1e7    = 0;
+static int32_t current_lon_1e7    = 0;
+static uint16_t current_heading_cd = 0;   // centidegrees
+static float current_speed_ms     = 0.0f;
+static float current_wp_dist      = 0.0f; // metres — from NAV_CONTROLLER_OUTPUT
+static bool missionItemReached    = false; // set by MISSION_ITEM_REACHED msg
 static unsigned long lastTelemetrySent = 0;
 
 // --- Helper function to send a mavlink message ---
@@ -52,6 +73,7 @@ void sendMavlinkMessage(mavlink_message_t* msg) {
 void Mavlink_TriggerEStop() {
     portENTER_CRITICAL(&stateMux);
     estopPending = true;
+    eStopActive  = true;   // Latches until manually cleared
     portEXIT_CRITICAL(&stateMux);
 }
 
@@ -60,6 +82,41 @@ void Mavlink_UploadWaypoints(const std::vector<Waypoint>& wps) {
     portENTER_CRITICAL(&stateMux);
     pendingMission = wps;
     uploadRequested = true;
+    portEXIT_CRITICAL(&stateMux);
+}
+
+// --- Telemetry Getter Functions (thread-safe reads) ---
+float Mavlink_GetGroundSpeed() {
+    portENTER_CRITICAL(&stateMux);
+    float val = current_speed_ms;
+    portEXIT_CRITICAL(&stateMux);
+    return val;
+}
+
+float Mavlink_GetDistToWaypoint() {
+    portENTER_CRITICAL(&stateMux);
+    float val = current_wp_dist;
+    portEXIT_CRITICAL(&stateMux);
+    return val;
+}
+
+bool Mavlink_GetWaypointReached() {
+    portENTER_CRITICAL(&stateMux);
+    bool val = missionItemReached;
+    portEXIT_CRITICAL(&stateMux);
+    return val;
+}
+
+bool Mavlink_GetEStopActive() {
+    portENTER_CRITICAL(&stateMux);
+    bool val = eStopActive;
+    portEXIT_CRITICAL(&stateMux);
+    return val;
+}
+
+void Mavlink_ClearWaypointReached() {
+    portENTER_CRITICAL(&stateMux);
+    missionItemReached = false;
     portEXIT_CRITICAL(&stateMux);
 }
 
@@ -82,9 +139,29 @@ void processMavlinkMessage(mavlink_message_t* msg) {
         case MAVLINK_MSG_ID_VFR_HUD: {
             mavlink_vfr_hud_t hud;
             mavlink_msg_vfr_hud_decode(msg, &hud);
+            portENTER_CRITICAL(&stateMux);
             current_speed_ms = hud.groundspeed;
+            portEXIT_CRITICAL(&stateMux);
             // DEBUG: Print raw ground speed for engineering verification
             Serial.printf("[MAVLink] Raw Ground Speed: %.2f m/s\n", hud.groundspeed);
+            break;
+        }
+        case MAVLINK_MSG_ID_NAV_CONTROLLER_OUTPUT: {
+            mavlink_nav_controller_output_t nav;
+            mavlink_msg_nav_controller_output_decode(msg, &nav);
+            portENTER_CRITICAL(&stateMux);
+            current_wp_dist = nav.wp_dist;
+            portEXIT_CRITICAL(&stateMux);
+            Serial.printf("[MAVLink] WP Distance: %.1f m\n", nav.wp_dist);
+            break;
+        }
+        case MAVLINK_MSG_ID_MISSION_ITEM_REACHED: {
+            mavlink_mission_item_reached_t reached;
+            mavlink_msg_mission_item_reached_decode(msg, &reached);
+            portENTER_CRITICAL(&stateMux);
+            missionItemReached = true;
+            portEXIT_CRITICAL(&stateMux);
+            Serial.printf("[MAVLink] MISSION_ITEM_REACHED — seq: %d\n", reached.seq);
             break;
         }
         case MAVLINK_MSG_ID_MISSION_REQUEST: {
@@ -107,7 +184,7 @@ void processMavlinkMessage(mavlink_message_t* msg) {
                 missionState = ACKNOWLEDGED;
             } else {
                 Serial.printf("[MAVLink] Mission upload FAILED, code: %d\n", ack.type);
-                missionState = ERROR;
+                missionState = MS_ERROR;
             }
             break;
         }
@@ -139,7 +216,7 @@ void Mavlink_Task(void *pvParameters) {
             }
         }
 
-        // 3. Handle E-STOP (RC Override)
+        // 3. Handle E-STOP (RC Override to Pixhawk)
         bool performEstop = false;
         portENTER_CRITICAL(&stateMux);
         if (estopPending) {
@@ -149,8 +226,8 @@ void Mavlink_Task(void *pvParameters) {
         portEXIT_CRITICAL(&stateMux);
 
         if (performEstop) {
-            Serial.println("[MAVLink] Executing E-STOP. Overriding RC 1 (Steering) & 3 (Throttle) to 1500us neutral.");
-            // RC Channels Override: Channel 1 and 3 to 1500us. Others to UINT16_MAX (ignore).
+            Serial.println("[MAVLink] Executing E-STOP. Overriding RC 1 (Steering) & 3 (Throttle) to 1500µs neutral.");
+            // RC Channels Override: Channel 1 and 3 to 1500µs. Others to UINT16_MAX (ignore).
             mavlink_msg_rc_channels_override_pack(GCS_SYSTEM, GCS_COMPONENT, &msg,
                 TARGET_SYSTEM, TARGET_COMPONENT,
                 1500, UINT16_MAX, 1500, UINT16_MAX, 
@@ -205,23 +282,33 @@ void Mavlink_Task(void *pvParameters) {
         else if ((missionState == WAITING_REQUEST || missionState == SENDING_ITEMS) && 
                  (now - lastMissionStateChange > MISSION_TIMEOUT_MS)) {
             Serial.println("[MAVLink] Mission upload TIMEOUT.");
-            missionState = ERROR;
+            missionState = MS_ERROR;
         }
 
-        // 5. Package Telemetry for Network (at ~5Hz)
+        // 5. Run MechatronicsModule (same core — no cross-core overhead)
+        float gs   = Mavlink_GetGroundSpeed();
+        float dist = Mavlink_GetDistToWaypoint();
+        bool  wpR  = Mavlink_GetWaypointReached();
+        bool  eS   = Mavlink_GetEStopActive();
+
+        updateStateMachine(gs, dist, wpR, eS);
+        updateSeedingPID(gs);
+
+        // 6. Package Telemetry for Network (at ~5Hz)
         if (now - lastTelemetrySent >= 200) {
             lastTelemetrySent = now;
             
             // Create minimal JSON
             StaticJsonDocument<256> doc;
-            doc["lat"] = (float)current_lat_1e7 / 1e7;
-            doc["lon"] = (float)current_lon_1e7 / 1e7;
+            doc["lat"]     = (float)current_lat_1e7 / 1e7;
+            doc["lon"]     = (float)current_lon_1e7 / 1e7;
             doc["heading"] = (float)current_heading_cd / 100.0f;
-            doc["v_g"] = current_speed_ms;
-            
-            // Add pseudo-state based on E-STOP
-            // Note: A true system state would come from MAVLink HEARTBEAT base_mode/custom_mode
-            doc["state"] = performEstop ? "E-STOP" : "AUTO"; 
+            doc["v_g"]     = current_speed_ms;
+            doc["wp_dist"] = current_wp_dist;
+
+            // Planter state from MechatronicsModule
+            doc["state"]      = Mechatronics_GetStateString();
+            doc["seed_rpm"]   = Mechatronics_GetSeedRPM();
 
             String json;
             serializeJson(doc, json);
