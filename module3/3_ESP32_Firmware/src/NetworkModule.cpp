@@ -1,5 +1,6 @@
 #include "NetworkModule.h"
 #include "MavlinkModule.h"
+#include "MechatronicsModule.h"
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -66,6 +67,29 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
                     if (obj["command"] == "ESTOP") {
                         Serial.println("[Network] E-STOP COMMAND RECEIVED via WS! Notifying MAVLink Module...");
                         Mavlink_TriggerEStop();
+                    }
+                    else if (obj["command"] == "MISSION") {
+                        // Parse waypoints array from the MISSION payload
+                        JsonArray wpArray = obj["waypoints"].as<JsonArray>();
+                        std::vector<Waypoint> wps;
+                        wps.reserve(wpArray.size());
+
+                        for (JsonObject wpObj : wpArray) {
+                            Waypoint w;
+                            w.row     = wpObj["row"] | 0;
+                            w.lat     = wpObj["lat"] | 0.0f;
+                            w.lon     = wpObj["lon"] | 0.0f;
+                            w.local_x = wpObj["local_x"] | 0.0f;
+                            w.local_y = wpObj["local_y"] | 0.0f;
+                            wps.push_back(w);
+                        }
+
+                        Serial.printf("[Network] MISSION COMMAND — %d waypoints parsed. Uploading to Pixhawk...\n", wps.size());
+                        Mavlink_UploadWaypoints(wps);
+
+                        // Arm the MechatronicsModule FSM so IDLE can transition to DEPLOYING
+                        Mechatronics_StartMission();
+                        Serial.println("[Network] MechatronicsModule mission flag SET.");
                     }
                 }
             } else {

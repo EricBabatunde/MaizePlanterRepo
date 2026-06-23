@@ -100,3 +100,7 @@ float Mechatronics_GetSeedRPM();
 
 /// Return a human-readable string for the current planter state.
 const char* Mechatronics_GetStateString();
+
+/// Arm the FSM — the IDLE state will only transition to DEPLOYING
+/// after this function has been called (i.e. a MISSION command received).
+void Mechatronics_StartMission();

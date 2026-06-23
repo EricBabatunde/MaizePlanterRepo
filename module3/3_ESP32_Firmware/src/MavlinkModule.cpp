@@ -300,8 +300,8 @@ void Mavlink_Task(void *pvParameters) {
             
             // Create minimal JSON
             StaticJsonDocument<256> doc;
-            doc["lat"]     = (float)current_lat_1e7 / 1e7;
-            doc["lon"]     = (float)current_lon_1e7 / 1e7;
+            doc["lat"]     = (double)current_lat_1e7 / 10000000.0;
+            doc["lon"]     = (double)current_lon_1e7 / 10000000.0;
             doc["heading"] = (float)current_heading_cd / 100.0f;
             doc["v_g"]     = current_speed_ms;
             doc["wp_dist"] = current_wp_dist;

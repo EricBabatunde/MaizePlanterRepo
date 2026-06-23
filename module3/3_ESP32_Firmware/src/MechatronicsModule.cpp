@@ -18,6 +18,11 @@
 // ---------------------------------------------------------------------------
 static PlanterState currentState = PLANTER_IDLE;
 
+// Mission-started flag — IDLE only transitions to DEPLOYING when true.
+// Set by Mechatronics_StartMission() (called from NetworkModule on MISSION command).
+// Reset on E-STOP so the operator must re-send a MISSION to resume.
+static bool missionStarted = false;
+
 // Non-blocking timer for actuator stroke timing
 static unsigned long stateEntryTime = 0;
 
@@ -209,6 +214,7 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
         setSeedMotorPWM(0);
         pidIntegral  = 0.0f;
         pidPrevError = 0.0f;
+        missionStarted = false; // Require a new MISSION command after E-STOP recovery
         currentState = PLANTER_E_STOP;
         stateEntryTime = millis();
         return;
@@ -222,9 +228,12 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
             // Outputs are safe: actuator off, seed motor off
             setActuator(0);
             setSeedMotorPWM(0);
-            // Transition to DEPLOYING when the mission is active and we are
-            // far enough from the waypoint to begin a new row
-            if (!eStopActive && !waypointReached && distToWaypoint > 2.0f) {
+            // Transition to DEPLOYING ONLY when:
+            //   1. A MISSION command has been received (missionStarted == true)
+            //   2. E-STOP is not active
+            //   3. The Pixhawk has not yet reached the waypoint
+            //   4. We are far enough from the waypoint to begin a new row
+            if (missionStarted && !eStopActive && !waypointReached && distToWaypoint > 2.0f) {
                 Serial.println("[Mechatronics] State: IDLE -> DEPLOYING");
                 setActuator(1); // Begin deploy stroke
                 currentState   = PLANTER_DEPLOYING;
@@ -370,4 +379,9 @@ const char* Mechatronics_GetStateString() {
         case PLANTER_E_STOP:     return "E-STOP";
         default:                 return "UNKNOWN";
     }
+}
+
+void Mechatronics_StartMission() {
+    missionStarted = true;
+    Serial.println("[Mechatronics] Mission ARMED — IDLE will transition to DEPLOYING when conditions are met.");
 }
