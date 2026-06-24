@@ -71,10 +71,10 @@ function generateWaypoints(startLat, startLon, initialHeadingDeg, fieldLength, f
   for (let i = 0; i < numRows; i++) {
 
     /* ── 1. Local Cartesian Grid (x, y) ──────────────────────────────
-     * The planter starts at the bottom-right (0, 0).
-     * Turning LEFT means stepping in the NEGATIVE X direction.
-     * Each subsequent row shifts left by one row spacing. */
-    const xLocal = -i * rowSpacing;
+     * The planter starts at the bottom-left (0, 0).
+     * Each subsequent row steps RIGHT in the POSITIVE X direction.
+     * This aligns with the canvas bottom-left origin used by the UI. */
+    const xLocal = i * rowSpacing;
 
     /* ── 2. Boustrophedon alternation ────────────────────────────────
      * Even-indexed rows (0, 2, 4 …) → forward pass:  Y goes 0 → length

@@ -41,4 +41,4 @@ Now the ESP32 is in the `PLANTING` state, waiting for movement.
     
 2. As the calculated distance to the waypoint drops below $0.5\text{m}$ (or the Pixhawk flags it as reached), the ESP32 should shift to `RETRACTING`.
     
-3. _Check:_ Does the Seeding Motor instantly stop? Does the Actuator pull _up_ for `ACTUATOR_RETRACT_MS`?
+3. _Check:_ Does the Seeding Motor instantly stop? Does the Actuator pull _up_ for `ACTUATOR_RETRACT_MS`? 

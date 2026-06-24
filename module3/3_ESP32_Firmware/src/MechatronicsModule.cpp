@@ -228,12 +228,12 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
             // Outputs are safe: actuator off, seed motor off
             setActuator(0);
             setSeedMotorPWM(0);
-            // Transition to DEPLOYING ONLY when:
-            //   1. A MISSION command has been received (missionStarted == true)
-            //   2. E-STOP is not active
-            //   3. The Pixhawk has not yet reached the waypoint
-            //   4. We are far enough from the waypoint to begin a new row
-            if (missionStarted && !eStopActive && !waypointReached && distToWaypoint > 2.0f) {
+            // Transition to DEPLOYING as soon as the operator sends a MISSION
+            // command and no E-STOP is active.  The distToWaypoint check is
+            // intentionally omitted here — at the starting location the
+            // Pixhawk reports dist=0, which would deadlock the FSM.
+            // (The dist > 2.0 m guard is retained on TURNING → DEPLOYING.)
+            if (missionStarted && !eStopActive) {
                 Serial.println("[Mechatronics] State: IDLE -> DEPLOYING");
                 setActuator(1); // Begin deploy stroke
                 currentState   = PLANTER_DEPLOYING;
