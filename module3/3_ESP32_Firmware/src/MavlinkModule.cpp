@@ -53,6 +53,11 @@ static MissionState missionState = MS_IDLE;
 static unsigned long lastMissionStateChange = 0;
 #define MISSION_TIMEOUT_MS 3000
 
+// Command Sequencer State
+enum CommandSequence { SEQ_IDLE, SEQ_WAIT_ARM, SEQ_WAIT_AUTO };
+static CommandSequence currentSeq = SEQ_IDLE;
+static unsigned long seqTimer = 0;
+
 // Telemetry State
 static int32_t current_lat_1e7    = 0;
 static int32_t current_lon_1e7    = 0;
@@ -125,6 +130,30 @@ void Mavlink_Init() {
     Serial.println("[MAVLink] Initialised on UART1 (RX:4, TX:5)");
 }
 
+// --- Arming and Mode Switching ---
+void armPixhawk() {
+    mavlink_message_t msg;
+    mavlink_msg_command_long_pack(GCS_SYSTEM, GCS_COMPONENT, &msg,
+        TARGET_SYSTEM, TARGET_COMPONENT,
+        MAV_CMD_COMPONENT_ARM_DISARM,
+        0,    // confirmation
+        1.0f, // param1: 1 to arm
+        0, 0, 0, 0, 0, 0);
+    sendMavlinkMessage(&msg);
+}
+
+void setPixhawkModeAuto() {
+    mavlink_message_t msg;
+    mavlink_msg_command_long_pack(GCS_SYSTEM, GCS_COMPONENT, &msg,
+        TARGET_SYSTEM, TARGET_COMPONENT,
+        MAV_CMD_DO_SET_MODE,
+        0,    // confirmation
+        MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, // param1: base mode
+        10.0f, // param2: custom mode (10 = AUTO for ArduRover)
+        0, 0, 0, 0, 0);
+    sendMavlinkMessage(&msg);
+}
+
 // --- Process Incoming MAVLink Packets ---
 void processMavlinkMessage(mavlink_message_t* msg) {
     switch (msg->msgid) {
@@ -182,6 +211,10 @@ void processMavlinkMessage(mavlink_message_t* msg) {
             if (ack.type == MAV_MISSION_ACCEPTED) {
                 Serial.println("[MAVLink] Mission upload SUCCESS!");
                 missionState = ACKNOWLEDGED;
+                
+                Serial.println("[MAVLink] Mission ACK received. Initiating Arming Sequencer...");
+                currentSeq = SEQ_WAIT_ARM;
+                seqTimer = millis();
             } else {
                 Serial.printf("[MAVLink] Mission upload FAILED, code: %d\n", ack.type);
                 missionState = MS_ERROR;
@@ -283,6 +316,19 @@ void Mavlink_Task(void *pvParameters) {
                  (now - lastMissionStateChange > MISSION_TIMEOUT_MS)) {
             Serial.println("[MAVLink] Mission upload TIMEOUT.");
             missionState = MS_ERROR;
+        }
+
+        // 4b. Command Sequencer (Arm & Auto Mode)
+        if (currentSeq == SEQ_WAIT_ARM && (millis() - seqTimer > 500)) {
+            armPixhawk(); // Send the ARM command
+            Serial.println("[MAVLink] Command sent: ARM");
+            currentSeq = SEQ_WAIT_AUTO;
+            seqTimer = millis();
+        }
+        else if (currentSeq == SEQ_WAIT_AUTO && (millis() - seqTimer > 500)) {
+            setPixhawkModeAuto(); // Send the SET_MODE_AUTO command
+            Serial.println("[MAVLink] Command sent: AUTO MODE");
+            currentSeq = SEQ_IDLE;
         }
 
         // 5. Run MechatronicsModule (same core — no cross-core overhead)
