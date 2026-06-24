@@ -61,20 +61,26 @@ function generateWaypoints(startLat, startLon, initialHeadingDeg, fieldLength, f
   const waypoints = [];
 
   /* ── Calculate the number of rows ──────────────────────────────────
-   * Math.ceil ensures we cover the full field width even when it is
-   * not perfectly divisible by the row spacing.
+   * Math.floor ensures we only generate rows that fit entirely within
+   * the user-defined field width.  Using Math.ceil would overshoot
+   * the boundary when fieldWidth is not perfectly divisible.
    * The +1 accounts for the first row at x = 0 (fencepost counting). */
-  const numRows = Math.ceil(fieldWidth / rowSpacing) + 1;
+  const numRows = Math.floor(fieldWidth / rowSpacing) + 1;
 
   console.log(`[PathPlanner] Generating mission — ${numRows} rows, ${fieldLength} m long, ${rowSpacing} m spacing.`);
 
   for (let i = 0; i < numRows; i++) {
 
     /* ── 1. Local Cartesian Grid (x, y) ──────────────────────────────
-     * The planter starts at the bottom-right (0, 0).
-     * Turning LEFT means stepping in the NEGATIVE X direction.
-     * Each subsequent row shifts left by one row spacing. */
-    const xLocal = -i * rowSpacing;
+     * The planter starts at the bottom-left (0, 0).
+     * Each subsequent row steps RIGHT in the POSITIVE X direction.
+     * This aligns with the canvas bottom-left origin used by the UI. */
+    const xLocal = i * rowSpacing;
+
+    /* ── Hard Boundary Safety Check ──────────────────────────────────
+     * If the calculated X coordinate exceeds the field width, stop
+     * generating waypoints immediately to prevent overflow. */
+    if (xLocal > fieldWidth) break;
 
     /* ── 2. Boustrophedon alternation ────────────────────────────────
      * Even-indexed rows (0, 2, 4 …) → forward pass:  Y goes 0 → length

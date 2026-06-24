@@ -23,6 +23,12 @@ static PlanterState currentState = PLANTER_IDLE;
 // Reset on E-STOP so the operator must re-send a MISSION to resume.
 static bool missionStarted = false;
 
+// Row-established safety latch — prevents the PLANTING→RETRACTING transition
+// from firing prematurely when distToWaypoint initialises at 0.00 m.
+// Set true once distToWaypoint exceeds 1.0 m (i.e. the planter is
+// confirmed to be tracking along the row). Reset on each deployment.
+static bool rowEstablished = false;
+
 // Non-blocking timer for actuator stroke timing
 static unsigned long stateEntryTime = 0;
 
@@ -246,6 +252,7 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
             if ((now - stateEntryTime) >= ACTUATOR_DEPLOY_MS) {
                 Serial.println("[Mechatronics] State: DEPLOYING -> PLANTING");
                 setActuator(0); // Hold in deployed position
+                rowEstablished = false; // Reset latch for the new row
                 currentState   = PLANTER_PLANTING;
                 stateEntryTime = now;
             }
@@ -253,8 +260,19 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
 
         case PLANTER_PLANTING:
             // Seed motor is PID-controlled (handled by updateSeedingPID).
-            // Transition to RETRACTING when approaching the end of the row.
-            if (waypointReached || distToWaypoint < 0.5f) {
+
+            // Safety latch: the row is only "established" once the planter
+            // has moved far enough that distToWaypoint exceeds 1.0 m.
+            // This prevents a premature RETRACTING transition when
+            // distToWaypoint initialises at 0.00 m.
+            if (!rowEstablished && distToWaypoint > 1.0f) {
+                rowEstablished = true;
+                Serial.println("[Mechatronics] Row established. Monitoring for end of row.");
+            }
+
+            // Transition to RETRACTING ONLY when the row is established
+            // AND the planter is approaching the end of the row.
+            if (rowEstablished && (waypointReached || distToWaypoint < 0.5f)) {
                 Serial.printf("[Mechatronics] State: PLANTING -> RETRACTING (wp_reached=%d, dist=%.2f m)\n",
                               waypointReached, distToWaypoint);
                 setSeedMotorPWM(0);  // Stop seeding immediately
@@ -280,7 +298,11 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
             // Seed motor off, actuator off. Wait for the Pixhawk to complete
             // its U-turn and begin tracking the next waypoint.
             setSeedMotorPWM(0);
-            if (!waypointReached && distToWaypoint > 2.0f) {
+            // Normal transition: the Pixhawk has locked onto the next
+            // waypoint and we are far enough along the new row.
+            // Failsafe: also allow transition if the operator re-sends
+            // a MISSION command (missionStarted is re-triggered).
+            if ((!waypointReached && distToWaypoint > 2.0f) || missionStarted) {
                 Serial.println("[Mechatronics] State: TURNING -> DEPLOYING");
                 setActuator(1); // Begin deploy for the new row
                 currentState   = PLANTER_DEPLOYING;

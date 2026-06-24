@@ -1,0 +1,17 @@
+12:23:09.536 > [WS] Raw incoming payload: {"command":"MISSION","waypoints":[{"row":0,"lat":7.2302911,"lon":3.4358703,"local_x":0,"local_y":0},{"row":0,"lat":7.230335982657166,"lon":3.43586856195223,"local_x":0,"local_y":5},{"row":1,"lat":7.230336241291266,"lon":3.4358753483139064,"local_x":0.75,"local_y":5},{"row":1,"lat":7.2302913586341,"lon":3.4358770863616765,"local_x":0.75,"local_y":0},{"row":2,"lat":7.230291617268201,"lon":3.4358838727233527,"local_x":1.5,"local_y":0},{"row":2,"lat":7.230336499925367,"lon":3.435882134675583,"local_x":1.5,"local_y":5},{"row":3,"lat":7.230336758559468,"lon":3.435888921037259,"local_x":2.25,"local_y":5},{"row":3,"lat":7.230291875902302,"lon":3.4358906590850293,"local_x":2.25,"local_y":0},{"row":4,"lat":7.230292134536403,"lon":3.4358974454467055,"local_x":3,"local_y":0},{"row":4,"lat":7.230337017193569,"lon":3.435895707398936,"local_x":3,"local_y":5},{"row":5,"lat":7.23033727582767,"lon":3.435902493760612,"local_x":3.75,"local_y":5},{"row":5,"lat":7.230292393170504,"lon":3.435904231808382,"local_x":3.75,"local_y":0},{"row":6,"lat":7.2302926518046045,"lon":3.4359110181700587,"local_x":4.5,"local_y":0},{"row":6,"lat":7.23033753446177,"lon":3.4359092801222886,"local_x":4.5,"local_y":5}]}
+12:23:09.635 > [Network] MISSION COMMAND — 14 waypoints parsed. Uploading to Pixhawk...
+12:23:09.647 > [Mechatronics] Mission ARMED — IDLE will transition to DEPLOYING when conditions are met.
+12:23:09.647 > [Network] MechatronicsModule mission flag SET.
+12:23:09.658 > [MAVLink] Raw Ground Speed: 0.01 m/s
+12:23:09.658 > [MAVLink] Starting mission upload. Total points: 14
+12:23:09.658 > [Mechatronics] State: IDLE -> DEPLOYING
+12:23:09.980 > [MAVLink] Mission upload SUCCESS!
+
+12:23:12.652 > [Mechatronics] State: DEPLOYING -> PLANTING
+12:23:12.666 > [Mechatronics] State: PLANTING -> RETRACTING (wp_reached=0, dist=0.00 m)
+
+12:23:15.163 > [Mechatronics] State: RETRACTING -> TURNING
+12:23:15.354 > [MAVLink] Raw Ground Speed: 0.05 m/s
+
+
+

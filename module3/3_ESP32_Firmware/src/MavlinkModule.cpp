@@ -299,7 +299,7 @@ void Mavlink_Task(void *pvParameters) {
             lastTelemetrySent = now;
             
             // Create minimal JSON
-            StaticJsonDocument<256> doc;
+            StaticJsonDocument<384> doc;
             doc["lat"]     = (double)current_lat_1e7 / 10000000.0;
             doc["lon"]     = (double)current_lon_1e7 / 10000000.0;
             doc["heading"] = (float)current_heading_cd / 100.0f;
@@ -309,6 +309,11 @@ void Mavlink_Task(void *pvParameters) {
             // Planter state from MechatronicsModule
             doc["state"]      = Mechatronics_GetStateString();
             doc["seed_rpm"]   = Mechatronics_GetSeedRPM();
+
+            // Explicit debug keys for mobile browser console diagnostics
+            doc["system_state"] = Mechatronics_GetStateString();
+            doc["wp_distance"]  = current_wp_dist;
+            doc["ground_speed"] = current_speed_ms;
 
             String json;
             serializeJson(doc, json);

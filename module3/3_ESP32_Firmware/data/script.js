@@ -77,6 +77,17 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // =========================================================================
+  // 2b. CONSOLE DEBUG STATE TRACKING
+  // =========================================================================
+  // State change tracker — logs highly visible transition messages to the
+  // mobile browser console for engineering field diagnostics.
+  let previousState = '';
+
+  // 1Hz console telemetry throttle — prevents flooding the mobile browser
+  let lastConsoleLogTime = 0;
+  const CONSOLE_LOG_INTERVAL_MS = 1000;
+
+  // =========================================================================
   // 3. WEBSOCKET CLIENT MODULE
   // =========================================================================
   const WS_URL = `ws://192.168.4.1/ws`;
@@ -137,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
    * Expected: { state, v_g, heading, x, y, wp_dist, batt, ping }
    */
   function handleTelemetry(d) {
-    // Update internal state
+    // Update internal state from primary keys
     if (d.state !== undefined) state.systemState = d.state;
     if (d.v_g !== undefined) state.groundSpeed = d.v_g;
     if (d.heading !== undefined) {
@@ -156,6 +167,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (d.batt !== undefined) state.battery = d.batt;
     if (d.ping !== undefined) state.ping = d.ping;
     if (d.seed_rpm !== undefined) state.seedRPM = d.seed_rpm;
+
+    // Parse explicit debug keys (duplicated in C++ for clarity)
+    if (d.system_state !== undefined) state.systemState = d.system_state;
+    if (d.wp_distance !== undefined) state.wpDist = d.wp_distance;
+    if (d.ground_speed !== undefined) state.groundSpeed = d.ground_speed;
+
+    // ── Console State Change Tracker ──────────────────────────────────
+    if (state.systemState !== previousState) {
+      console.log('====== STATE TRANSITION: ' + previousState + ' -> ' + state.systemState + ' ======');
+      previousState = state.systemState;
+    }
+
+    // ── 1Hz Throttled Navigation Telemetry Log ────────────────────────
+    const now = Date.now();
+    if (now - lastConsoleLogTime >= CONSOLE_LOG_INTERVAL_MS) {
+      lastConsoleLogTime = now;
+      console.log(
+        '[Telemetry] Dist to WP: ' + state.wpDist.toFixed(2) + 'm | ' +
+        'Speed: ' + state.groundSpeed.toFixed(2) + 'm/s | ' +
+        'Heading: ' + state.heading.toFixed(1) + '°'
+      );
+    }
 
     // Push to UI
     updateTelemetryUI();
@@ -180,16 +213,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /** Push latest telemetry values into the DOM. */
   function updateTelemetryUI() {
-    // System state badge
+    // System state badge — map FSM states to CSS badge classes
     const s = state.systemState;
     DOM.valState.textContent = s;
-    DOM.valState.className = 'telemetry-card__value badge badge--' +
-      (s === 'AUTO' ? 'auto' : s === 'MANUAL' ? 'manual' : s === 'E-STOP' ? 'estop' : 'idle');
+    let badgeClass = 'idle';
+    if (s === 'PLANTING')       badgeClass = 'auto';
+    else if (s === 'DEPLOYING' || s === 'RETRACTING' || s === 'TURNING') badgeClass = 'manual';
+    else if (s === 'E-STOP')    badgeClass = 'estop';
+    DOM.valState.className = 'telemetry-card__value badge badge--' + badgeClass;
 
     // Numerical readouts
     DOM.valSpeed.innerHTML = `${state.groundSpeed.toFixed(2)} <small>m/s</small>`;
     DOM.valHeading.innerHTML = `${state.heading.toFixed(1)}<small>°</small>`;
-    DOM.valWpDist.innerHTML = `${state.wpDist.toFixed(1)} <small>m</small>`;
+    DOM.valWpDist.innerHTML = `${state.wpDist.toFixed(2)} <small>m</small>`;
     DOM.valPosition.textContent = `${state.posX.toFixed(1)} , ${state.posY.toFixed(1)}`;
 
     // Header indicators
