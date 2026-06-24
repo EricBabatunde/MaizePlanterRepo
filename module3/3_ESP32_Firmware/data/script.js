@@ -57,12 +57,15 @@ document.addEventListener('DOMContentLoaded', () => {
     systemState: 'IDLE',
     groundSpeed: 0,
     heading: 0,
+    lat: 0,        // Live GPS latitude (decimal degrees) from Pixhawk
+    lon: 0,        // Live GPS longitude (decimal degrees) from Pixhawk
     posX: 0,
     posY: 0,
     wpDist: 0,
     battery: 0,
     ping: 0,
-    // Mission waypoints [{x, y}, ...]
+    seedRPM: 0,
+    // Mission waypoints [{x, y}, ...] for canvas rendering
     waypoints: [],
     // Data logging
     isLogging: false,
@@ -144,11 +147,15 @@ document.addEventListener('DOMContentLoaded', () => {
          rotation from spiralling out of control. */
       state.heading = ((d.heading % 360) + 360) % 360;
     }
+    // Live GPS coordinates from Pixhawk (decimal degrees)
+    if (d.lat !== undefined) state.lat = d.lat;
+    if (d.lon !== undefined) state.lon = d.lon;
     if (d.x !== undefined) state.posX = d.x;
     if (d.y !== undefined) state.posY = d.y;
     if (d.wp_dist !== undefined) state.wpDist = d.wp_dist;
     if (d.batt !== undefined) state.battery = d.batt;
     if (d.ping !== undefined) state.ping = d.ping;
+    if (d.seed_rpm !== undefined) state.seedRPM = d.seed_rpm;
 
     // Push to UI
     updateTelemetryUI();
@@ -506,32 +513,63 @@ document.addEventListener('DOMContentLoaded', () => {
   // 9. EVENT LISTENERS
   // =========================================================================
 
-  /* --- Upload Waypoints --- */
+  /* --- Upload Waypoints (manual override — renders on canvas only) --- */
   DOM.btnUploadWaypoints.addEventListener('click', () => {
     const wps = parseWaypointsFromText(DOM.inputWaypoints.value);
     if (wps.length < 2) {
-      alert('Please enter at least 2 waypoints (one X, Y pair per line).');
+      console.warn('[Mission] Fewer than 2 waypoints entered. Ignoring.');
       return;
     }
     state.waypoints = wps;
     renderCanvas();
-    console.log(`[Mission] ${wps.length} waypoints uploaded.`);
+    console.log(`[Mission] ${wps.length} manual waypoints rendered on canvas.`);
   });
 
-  /* --- Start Mission --- */
+  /* --- Start Mission ---
+     Reads the live GPS origin from telemetry, generates a boustrophedon
+     path via path_planner.js, renders it on the canvas, and sends the
+     full mission payload to the ESP32 over WebSocket. */
   DOM.btnStartMission.addEventListener('click', () => {
-    if (state.waypoints.length < 2) {
-      alert('Upload waypoints before starting a mission.');
+    // 1. Read the live GPS origin from current telemetry
+    const originLat = state.lat;
+    const originLon = state.lon;
+    const originHeading = state.heading;
+
+    // 2. Read field dimensions from the HTML inputs
+    const fieldLength = parseFloat(DOM.inputFieldLength.value) || 50;
+    const fieldWidth  = parseFloat(DOM.inputFieldWidth.value)  || 50;
+    const rowSpacing  = parseFloat(DOM.inputRowSpacing.value)  || 0.6;
+
+    // 3. Generate the boustrophedon waypoint path
+    const generatedWPs = generateWaypoints(
+      originLat, originLon, originHeading,
+      fieldLength, fieldWidth, rowSpacing
+    );
+
+    if (generatedWPs.length < 2) {
+      console.error('[Mission] Path planner generated fewer than 2 waypoints. Aborting.');
       return;
     }
-    const rowSpacing = parseFloat(DOM.inputRowSpacing.value);
+
+    // 4. Render the generated waypoints on the 2D canvas
+    //    Map the path planner's local_x/local_y to the canvas coordinate system
+    state.waypoints = generatedWPs.map(wp => ({
+      x: wp.local_x,
+      y: wp.local_y,
+    }));
+    renderCanvas();
+
+    // 5. Package and send the mission to the ESP32
     const payload = {
-      command: 'START_MISSION',
-      row_spacing: rowSpacing,
-      waypoints: state.waypoints,
+      command: 'MISSION',
+      waypoints: generatedWPs,
     };
     wsSend(payload);
-    console.log('[Mission] START_MISSION sent:', payload);
+
+    console.log(`[Mission] MISSION sent — ${generatedWPs.length} waypoints, ` +
+                `origin: (${originLat.toFixed(7)}, ${originLon.toFixed(7)}), ` +
+                `heading: ${originHeading.toFixed(1)}°, ` +
+                `field: ${fieldLength}×${fieldWidth} m, row spacing: ${rowSpacing} m`);
   });
 
   /* --- E-STOP (highest priority) ---
