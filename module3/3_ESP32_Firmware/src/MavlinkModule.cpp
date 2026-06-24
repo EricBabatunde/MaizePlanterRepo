@@ -336,8 +336,9 @@ void Mavlink_Task(void *pvParameters) {
         float dist = Mavlink_GetDistToWaypoint();
         bool  wpR  = Mavlink_GetWaypointReached();
         bool  eS   = Mavlink_GetEStopActive();
+        float currentHeading = current_heading_cd / 100.0f;
 
-        updateStateMachine(gs, dist, wpR, eS);
+        updateStateMachine(gs, dist, wpR, eS, currentHeading);
         updateSeedingPID(gs);
 
         // 6. Package Telemetry for Network (at ~5Hz)

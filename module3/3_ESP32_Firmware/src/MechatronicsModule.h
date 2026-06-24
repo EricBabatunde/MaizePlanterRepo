@@ -86,7 +86,7 @@ void Mechatronics_Init();
 /// Run the finite state machine. Must be called rapidly (every ~10ms).
 /// All timing is non-blocking via millis().
 void updateStateMachine(float groundSpeed, float distToWaypoint,
-                        bool waypointReached, bool eStopActive);
+                        bool waypointReached, bool eStopActive, float currentHeading);
 
 /// Run the seeding PID controller. Reads encoder RPM and adjusts PWM.
 /// Must be called rapidly alongside the state machine.

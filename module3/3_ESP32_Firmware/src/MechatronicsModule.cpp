@@ -12,6 +12,7 @@
    ============================================================================= */
 
 #include "MechatronicsModule.h"
+#include "MavlinkModule.h"
 
 // ---------------------------------------------------------------------------
 // 1. INTERNAL STATE
@@ -211,7 +212,9 @@ void Mechatronics_Init() {
 // 5. PUBLIC API — FINITE STATE MACHINE
 // ---------------------------------------------------------------------------
 void updateStateMachine(float groundSpeed, float distToWaypoint,
-                        bool waypointReached, bool eStopActive) {
+                        bool waypointReached, bool eStopActive, float currentHeading) {
+
+    static float turnStartHeading = 0.0f;
 
     // E-STOP is the highest-priority override — checked FIRST in every state
     if (eStopActive && currentState != PLANTER_E_STOP) {
@@ -275,6 +278,7 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
             if (rowEstablished && (waypointReached || distToWaypoint < 0.5f)) {
                 Serial.printf("[Mechatronics] State: PLANTING -> RETRACTING (wp_reached=%d, dist=%.2f m)\n",
                               waypointReached, distToWaypoint);
+                Mavlink_ClearWaypointReached(); // Fix the sticky waypoint flag
                 setSeedMotorPWM(0);  // Stop seeding immediately
                 pidIntegral  = 0.0f; // Reset PID integral to prevent windup
                 pidPrevError = 0.0f;
@@ -289,26 +293,36 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
             if ((now - stateEntryTime) >= ACTUATOR_RETRACT_MS) {
                 Serial.println("[Mechatronics] State: RETRACTING -> TURNING");
                 setActuator(0); // Actuator fully retracted
+                turnStartHeading = currentHeading; // Capture heading at start of turn
                 currentState   = PLANTER_TURNING;
                 stateEntryTime = now;
             }
             break;
 
-        case PLANTER_TURNING:
+        case PLANTER_TURNING: {
             // Seed motor off, actuator off. Wait for the Pixhawk to complete
             // its U-turn and begin tracking the next waypoint.
             setSeedMotorPWM(0);
+
+            // Calculate the absolute angular difference
+            float headingDiff = abs(currentHeading - turnStartHeading);
+            if (headingDiff > 180.0f) {
+                headingDiff = 360.0f - headingDiff; // Handle 360-degree wrap-around
+            }
+
             // Normal transition: the Pixhawk has locked onto the next
-            // waypoint and we are far enough along the new row.
+            // waypoint and we are far enough along the new row, or we
+            // detected a full U-Turn (heading diff > ~160 degrees).
             // Failsafe: also allow transition if the operator re-sends
             // a MISSION command (missionStarted is re-triggered).
-            if ((!waypointReached && distToWaypoint > 2.0f) || missionStarted) {
+            if ((headingDiff > 160.0f && !waypointReached && distToWaypoint > 2.0f) || missionStarted) {
                 Serial.println("[Mechatronics] State: TURNING -> DEPLOYING");
                 setActuator(1); // Begin deploy for the new row
                 currentState   = PLANTER_DEPLOYING;
                 stateEntryTime = now;
             }
             break;
+        }
 
         case PLANTER_E_STOP:
             // All outputs remain halted. Recovery requires E-STOP to be cleared.
