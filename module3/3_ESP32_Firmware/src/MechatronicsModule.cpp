@@ -249,6 +249,8 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
                 Serial.println("[Mechatronics] State: DEPLOYING -> PLANTING");
                 setActuator(0);            // Stop actuator
                 rowEstablished = false;    // RESET THE LATCH
+                waypointReached = false;   // Purge stale MAVLink messages
+                Mavlink_ClearWaypointReached();
                 currentState   = PLANTER_PLANTING;
                 stateEntryTime = now;
             }
@@ -258,6 +260,8 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
             // Safety Latch: Wait for planter to leave the start zone
             if (!rowEstablished && distToWaypoint > 1.0f) {
                 rowEstablished = true;
+                waypointReached = false; // Double-check purge
+                Mavlink_ClearWaypointReached();
                 Serial.println("[Mechatronics] Row established. Monitoring for end of row.");
             }
 
@@ -268,7 +272,8 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
                 setSeedMotorPWM(0);
                 pidIntegral  = 0.0f;
                 pidPrevError = 0.0f;
-                Mavlink_ClearWaypointReached(); // CLEAR THE STICKY FLAG
+                waypointReached = false;
+                Mavlink_ClearWaypointReached();
                 setActuator(-1);               // Retract
                 currentState   = PLANTER_RETRACTING;
                 stateEntryTime = now;
