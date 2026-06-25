@@ -290,22 +290,20 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
             }
             break;
 
-        case PLANTER_TURNING: {
-            setSeedMotorPWM(0);
+        case PLANTER_TURNING:
+            {
+                float headingDiff = abs(currentHeading - turnStartHeading);
+                if (headingDiff > 180.0f) { headingDiff = 360.0f - headingDiff; }
 
-            float headingDiff = abs(currentHeading - turnStartHeading);
-            if (headingDiff > 180.0f) {
-                headingDiff = 360.0f - headingDiff;
-            }
-
-            if (headingDiff > 150.0f && distToWaypoint > 2.0f) {
-                Serial.println("[Mechatronics] State: TURNING -> DEPLOYING");
-                setActuator(1); // Deploy for new row
-                currentState   = PLANTER_DEPLOYING;
-                stateEntryTime = now;
+                // Trigger if turned 150 degrees AND at least 3000ms have passed in the turn
+                if (headingDiff > 150.0f && (millis() - stateEntryTime > 3000)) {
+                    setActuator(1); // Deploy for new row
+                    currentState = PLANTER_DEPLOYING;
+                    stateEntryTime = millis();
+                    Serial.printf("[Mechatronics] U-Turn complete (Turned %.1f deg). State: TURNING -> DEPLOYING\n", headingDiff);
+                }
             }
             break;
-        }
 
         case PLANTER_E_STOP:
             // All outputs remain halted. Recovery requires E-STOP to be cleared.

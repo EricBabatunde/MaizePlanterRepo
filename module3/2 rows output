@@ -1,0 +1,32 @@
+14:41:24.981 [Telemetry] Dist to WP: 10.00m | Speed: 0.11m/s | Heading: 273.3° script.js:186:15
+14:41:25.176 ====== STATE TRANSITION: DEPLOYING -> PLANTING ====== script.js:178:15
+14:41:26.096 [Telemetry] Dist to WP: 10.00m | Speed: 0.01m/s | Heading: 273.0° script.js:186:15
+14:41:27.198 [Telemetry] Dist to WP: 10.00m | Speed: 0.80m/s | Heading: 275.8° script.js:186:15
+14:41:37.857 [Telemetry] Dist to WP: 2.00m | Speed: 0.52m/s | Heading: 268.5° script.js:186:15
+14:41:39.063 [Telemetry] Dist to WP: 2.00m | Speed: 0.54m/s | Heading: 270.8° script.js:186:15
+14:41:39.888 ====== STATE TRANSITION: PLANTING -> RETRACTING ====== script.js:178:15
+14:41:40.076 [Telemetry] Dist to WP: 1.00m | Speed: 0.54m/s | Heading: 270.0° script.js:186:15
+14:41:41.097 [Telemetry] Dist to WP: 2.00m | Speed: 0.39m/s | Heading: 270.9° script.js:186:15
+14:41:42.111 [Telemetry] Dist to WP: 10.00m | Speed: 0.08m/s | Heading: 270.1° script.js:186:15
+14:41:42.376 ====== STATE TRANSITION: RETRACTING -> TURNING ====== script.js:178:15
+14:41:43.139 [Telemetry] Dist to WP: 10.00m | Speed: 0.13m/s | Heading: 276.6° script.js:186:15
+14:41:44.424 [Telemetry] Dist to WP: 10.00m | Speed: 0.12m/s | Heading: 279.8° script.js:186:15
+14:41:45.645 [Telemetry] Dist to WP: 10.00m | Speed: 0.59m/s | Heading: 19.0° script.js:186:15
+14:41:46.609 ====== STATE TRANSITION: TURNING -> DEPLOYING ====== script.js:178:15
+14:41:46.806 [Telemetry] Dist to WP: 10.00m | Speed: 0.56m/s | Heading: 84.0° script.js:186:15
+14:41:47.862 [Telemetry] Dist to WP: 10.00m | Speed: 0.37m/s | Heading: 91.2° script.js:186:15
+14:41:48.915 [Telemetry] Dist to WP: 10.00m | Speed: 0.23m/s | Heading: 91.8° script.js:186:15
+14:41:49.697 ====== STATE TRANSITION: DEPLOYING -> PLANTING ====== script.js:178:15
+14:41:50.120 [Telemetry] Dist to WP: 10.00m | Speed: 0.16m/s | Heading: 95.2° script.js:186:15
+14:42:10.160 [Telemetry] Dist to WP: 1.00m | Speed: 0.44m/s | Heading: 105.4° script.js:186:15
+14:42:10.335 ====== STATE TRANSITION: PLANTING -> RETRACTING ====== script.js:178:15
+14:42:11.372 [Telemetry] Dist to WP: 2.00m | Speed: 0.27m/s | Heading: 108.5° script.js:186:15
+14:42:12.379 [Telemetry] Dist to WP: 2.00m | Speed: 0.01m/s | Heading: 105.2° script.js:186:15
+14:42:12.797 ====== STATE TRANSITION: RETRACTING -> TURNING ====== script.js:178:15
+14:42:13.397 [Telemetry] Dist to WP: 2.00m | Speed: 0.05m/s | Heading: 101.9° script.js:186:15
+14:42:14.420 [Telemetry] Dist to WP: 2.00m | Speed: 0.14m/s | Heading: 98.5° script.js:186:15
+14:42:15.472 [Telemetry] Dist to WP: 2.00m | Speed: 0.64m/s | Heading: 56.4° script.js:186:15
+14:42:16.475 [Telemetry] Dist to WP: 1.00m | Speed: 0.10m/s | Heading: 331.5° script.js:186:15
+14:42:17.506 [Telemetry] Dist to WP: 1.00m | Speed: 0.33m/s | Heading: 292.2° script.js:186:15
+14:42:18.518 [Telemetry] Dist to WP: 1.00m | Speed: 0.20m/s | Heading: 290.7° script.js:186:15
+
