@@ -234,90 +234,68 @@ void updateStateMachine(float groundSpeed, float distToWaypoint,
     switch (currentState) {
 
         case PLANTER_IDLE:
-            // Outputs are safe: actuator off, seed motor off
             setActuator(0);
             setSeedMotorPWM(0);
-            // Transition to DEPLOYING as soon as the operator sends a MISSION
-            // command and no E-STOP is active.  The distToWaypoint check is
-            // intentionally omitted here — at the starting location the
-            // Pixhawk reports dist=0, which would deadlock the FSM.
-            // (The dist > 2.0 m guard is retained on TURNING → DEPLOYING.)
             if (missionStarted && !eStopActive) {
                 Serial.println("[Mechatronics] State: IDLE -> DEPLOYING");
-                setActuator(1); // Begin deploy stroke
+                setActuator(1); // Deploy
                 currentState   = PLANTER_DEPLOYING;
                 stateEntryTime = now;
             }
             break;
 
         case PLANTER_DEPLOYING:
-            // Actuator is deploying — wait for the timed stroke to complete
-            if ((now - stateEntryTime) >= ACTUATOR_DEPLOY_MS) {
+            if ((now - stateEntryTime) > ACTUATOR_DEPLOY_MS) {
                 Serial.println("[Mechatronics] State: DEPLOYING -> PLANTING");
-                setActuator(0); // Hold in deployed position
-                rowEstablished = false; // Reset latch for the new row
+                setActuator(0);            // Stop actuator
+                rowEstablished = false;    // RESET THE LATCH
                 currentState   = PLANTER_PLANTING;
                 stateEntryTime = now;
             }
             break;
 
         case PLANTER_PLANTING:
-            // Seed motor is PID-controlled (handled by updateSeedingPID).
-
-            // Safety latch: the row is only "established" once the planter
-            // has moved far enough that distToWaypoint exceeds 1.0 m.
-            // This prevents a premature RETRACTING transition when
-            // distToWaypoint initialises at 0.00 m.
+            // Safety Latch: Wait for planter to leave the start zone
             if (!rowEstablished && distToWaypoint > 1.0f) {
                 rowEstablished = true;
                 Serial.println("[Mechatronics] Row established. Monitoring for end of row.");
             }
 
-            // Transition to RETRACTING ONLY when the row is established
-            // AND the planter is approaching the end of the row.
+            // End of Row Trigger
             if (rowEstablished && (waypointReached || distToWaypoint < 0.5f)) {
                 Serial.printf("[Mechatronics] State: PLANTING -> RETRACTING (wp_reached=%d, dist=%.2f m)\n",
                               waypointReached, distToWaypoint);
-                Mavlink_ClearWaypointReached(); // Fix the sticky waypoint flag
-                setSeedMotorPWM(0);  // Stop seeding immediately
-                pidIntegral  = 0.0f; // Reset PID integral to prevent windup
+                setSeedMotorPWM(0);
+                pidIntegral  = 0.0f;
                 pidPrevError = 0.0f;
-                setActuator(-1);     // Begin retract stroke
+                Mavlink_ClearWaypointReached(); // CLEAR THE STICKY FLAG
+                setActuator(-1);               // Retract
                 currentState   = PLANTER_RETRACTING;
                 stateEntryTime = now;
             }
             break;
 
         case PLANTER_RETRACTING:
-            // Actuator is retracting — wait for the timed stroke to complete
-            if ((now - stateEntryTime) >= ACTUATOR_RETRACT_MS) {
+            if ((now - stateEntryTime) > ACTUATOR_RETRACT_MS) {
                 Serial.println("[Mechatronics] State: RETRACTING -> TURNING");
-                setActuator(0); // Actuator fully retracted
-                turnStartHeading = currentHeading; // Capture heading at start of turn
-                currentState   = PLANTER_TURNING;
+                setActuator(0);
+                turnStartHeading = currentHeading; // Capture heading for U-turn
+                currentState   = PLANTER_TURNING;  // DO NOT SET THIS TO DEPLOYING
                 stateEntryTime = now;
             }
             break;
 
         case PLANTER_TURNING: {
-            // Seed motor off, actuator off. Wait for the Pixhawk to complete
-            // its U-turn and begin tracking the next waypoint.
             setSeedMotorPWM(0);
 
-            // Calculate the absolute angular difference
             float headingDiff = abs(currentHeading - turnStartHeading);
             if (headingDiff > 180.0f) {
-                headingDiff = 360.0f - headingDiff; // Handle 360-degree wrap-around
+                headingDiff = 360.0f - headingDiff;
             }
 
-            // Normal transition: the Pixhawk has locked onto the next
-            // waypoint and we are far enough along the new row, or we
-            // detected a full U-Turn (heading diff > ~160 degrees).
-            // Failsafe: also allow transition if the operator re-sends
-            // a MISSION command (missionStarted is re-triggered).
-            if ((headingDiff > 160.0f && !waypointReached && distToWaypoint > 2.0f) || missionStarted) {
+            if (headingDiff > 150.0f && distToWaypoint > 2.0f) {
                 Serial.println("[Mechatronics] State: TURNING -> DEPLOYING");
-                setActuator(1); // Begin deploy for the new row
+                setActuator(1); // Deploy for new row
                 currentState   = PLANTER_DEPLOYING;
                 stateEntryTime = now;
             }

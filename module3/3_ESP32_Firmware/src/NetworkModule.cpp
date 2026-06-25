@@ -101,7 +101,14 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
 
 // --- Broadcast Telemetry to UI ---
 void Network_SendTelemetry(const String& json) {
-    // Only text clients if someone is connected
+    // Non-blocking 5Hz throttle — prevents WebSocket TX buffer overflow
+    // (Error 1006) when the caller fires faster than the async send can drain.
+    static unsigned long lastWsTime = 0;
+    unsigned long now = millis();
+    if (now - lastWsTime < 200) return; // Discard if < 200ms since last send
+    lastWsTime = now;
+
+    // Only broadcast if at least one client is connected
     if (ws.count() > 0) {
         ws.textAll(json);
     }
