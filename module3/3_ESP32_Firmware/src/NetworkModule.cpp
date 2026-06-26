@@ -101,7 +101,7 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
                             if (flightLogFile) {
                                 // Write CSV header if file is empty
                                 if (flightLogFile.size() == 0) {
-                                    flightLogFile.println("Timestamp,State,Speed,Heading,DistToWP,SeedRPM");
+                                    flightLogFile.println("Timestamp,Lat,Lon,Heading,Speed,DistToWP,State,Latency");
                                 }
                                 flightLogActive = true;
                                 Serial.println("[Network] Flight log STARTED.");
@@ -118,10 +118,10 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
                         }
                     }
                     else if (obj["command"] == "PING") {
-                        // Echo back immediately for round-trip latency measurement
-                        unsigned long ts = obj["timestamp"] | 0;
-                        char pong[64];
-                        snprintf(pong, sizeof(pong), "{\"type\":\"PONG\",\"timestamp\":%lu}", ts);
+                        // Extract timestamp as a string to prevent 32-bit overflow
+                        const char* ts = obj["timestamp"] | "0";
+                        char pong[96];
+                        snprintf(pong, sizeof(pong), "{\"type\":\"PONG\",\"timestamp\":\"%s\"}", ts);
                         client->text(pong);
                     }
                 }
@@ -148,10 +148,14 @@ void Network_SendTelemetry(const String& json) {
 }
 
 // --- Flight Log Append (called at 1Hz from Mavlink_Task) ---
-void Network_AppendFlightLog(const char* state, float speed, float heading, float wpDist, float seedRpm) {
+void Network_AppendFlightLog(float lat, float lon, float heading, float speed,
+                             float wpDist, const char* state, int latency) {
     if (!flightLogActive || !flightLogFile) return;
-    flightLogFile.printf("%lu,%s,%.2f,%.1f,%.2f,%.1f\n",
-                         millis(), state, speed, heading, wpDist, seedRpm);
+    // Guard: do not write rows with empty state (e.g. from stray PING frames)
+    if (state == nullptr || state[0] == '\0') return;
+
+    flightLogFile.printf("%lu,%.6f,%.6f,%.1f,%.2f,%.2f,%s,%d\n",
+                         millis(), lat, lon, heading, speed, wpDist, state, latency);
     flightLogFile.flush();
 }
 

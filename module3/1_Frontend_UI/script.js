@@ -74,6 +74,9 @@ document.addEventListener('DOMContentLoaded', () => {
     ppm: 1,
     fieldWidth: 50,   // metres — default
     fieldLength: 50,   // metres — default
+    // Smooth canvas animation targets
+    smoothX: 0,
+    smoothY: 0,
   };
 
   // =========================================================================
@@ -109,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Start 1Hz PING for latency measurement
       clearInterval(pingIntervalId);
       pingIntervalId = setInterval(() => {
-        wsSend({ command: 'PING', timestamp: Date.now() });
+        wsSend({ command: 'PING', timestamp: Date.now().toString() });
       }, 1000);
     };
     ws.onclose = (ev) => {
@@ -129,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Intercept PONG responses for latency calculation
         if (data.type === 'PONG' && data.timestamp) {
-          state.ping = Date.now() - data.timestamp;
+          state.ping = Date.now() - parseInt(data.timestamp, 10);
           DOM.valLatency.textContent = `${state.ping} ms`;
           return; // Do not pass PONG into the telemetry handler
         }
@@ -470,6 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
    */
   function drawPlanter() {
     let px, py;
+    let targetX = state.posX, targetY = state.posY;
     const wps = state.waypoints;
     const idx = state.currentWaypointIndex;
 
@@ -477,30 +481,38 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.systemState === 'TURNING') {
         // Snap to the start of the next row
         const nextIdx = Math.min(idx + 1, wps.length - 1);
-        [px, py] = toCanvas(wps[nextIdx].x, wps[nextIdx].y);
+        targetX = wps[nextIdx].x;
+        targetY = wps[nextIdx].y;
       } else {
         // Kinematic interpolation along the current segment
-        const wpPrev = wps[idx - 1];
-        const wpCurr = wps[idx];
-        const segDx = wpCurr.x - wpPrev.x;
-        const segDy = wpCurr.y - wpPrev.y;
+        const wpStart = wps[idx - 1];
+        const wpEnd   = wps[idx];
+        const segDx = wpEnd.x - wpStart.x;
+        const segDy = wpEnd.y - wpStart.y;
         const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
 
         if (segLen > 0.01) {
-          // distToWaypoint is distance REMAINING to wpCurr
-          const travelled = Math.max(0, segLen - state.wpDist);
-          const t = Math.min(1, Math.max(0, travelled / segLen));
-          const interpX = wpPrev.x + segDx * t;
-          const interpY = wpPrev.y + segDy * t;
-          [px, py] = toCanvas(interpX, interpY);
+          // progress: 0% at row start, 100% at row end
+          const progress = Math.min(1, Math.max(0, 1.0 - (state.wpDist / segLen)));
+          targetX = wpStart.x + segDx * progress;
+          targetY = wpStart.y + segDy * progress;
         } else {
-          [px, py] = toCanvas(wpCurr.x, wpCurr.y);
+          targetX = wpEnd.x;
+          targetY = wpEnd.y;
         }
       }
     } else {
       // Fallback: use raw telemetry position
-      [px, py] = toCanvas(state.posX, state.posY);
+      targetX = state.posX;
+      targetY = state.posY;
     }
+
+    // Smooth lerp toward the target (masks integer wp_dist steps)
+    const lerpRate = 0.15;
+    state.smoothX += (targetX - state.smoothX) * lerpRate;
+    state.smoothY += (targetY - state.smoothY) * lerpRate;
+
+    [px, py] = toCanvas(state.smoothX, state.smoothY);
 
     /* Convert heading from degrees to radians for canvas rotation.
        Subtract 90° so that 0° = North (canvas 0 rad = East).

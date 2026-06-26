@@ -63,33 +63,17 @@ static int32_t current_lat_1e7    = 0;
 static int32_t current_lon_1e7    = 0;
 static uint16_t current_heading_cd = 0;   // centidegrees
 static float current_speed_ms     = 0.0f;
-static float current_wp_dist      = 0.0f; // metres — Haversine-computed
+static float current_wp_dist      = 0.0f; // metres — from NAV_CONTROLLER_OUTPUT
 static bool missionItemReached    = false; // set by MISSION_ITEM_REACHED msg
 static float   current_batt_v     = 0.0f;  // Battery voltage from SYS_STATUS (V)
 static uint8_t current_gps_fix    = 0;     // GPS fix type from GPS_RAW_INT
 static unsigned long lastTelemetrySent = 0;
-
-// Active Mission Waypoint Tracking (for Haversine distance)
-static uint16_t activeWpIndex     = 0;     // Index into pendingMission
-static uint16_t activeWpCount     = 0;     // Total waypoints in active mission
 
 // --- Helper function to send a mavlink message ---
 void sendMavlinkMessage(mavlink_message_t* msg) {
     uint8_t buf[MAVLINK_MAX_PACKET_LEN];
     uint16_t len = mavlink_msg_to_send_buffer(buf, msg);
     PixhawkSerial.write(buf, len);
-}
-
-// --- Haversine Distance (metres) between two GPS coordinates ---
-static float calculateHaversine(double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371000.0; // Earth radius in metres
-    double dLat = (lat2 - lat1) * DEG_TO_RAD;
-    double dLon = (lon2 - lon1) * DEG_TO_RAD;
-    double a = sin(dLat / 2.0) * sin(dLat / 2.0) +
-               cos(lat1 * DEG_TO_RAD) * cos(lat2 * DEG_TO_RAD) *
-               sin(dLon / 2.0) * sin(dLon / 2.0);
-    double c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
-    return (float)(R * c);
 }
 
 // --- Trigger E-STOP (called from Network Core) ---
@@ -105,8 +89,6 @@ void Mavlink_UploadWaypoints(const std::vector<Waypoint>& wps) {
     portENTER_CRITICAL(&stateMux);
     pendingMission = wps;
     uploadRequested = true;
-    activeWpIndex = 0;
-    activeWpCount = wps.size();
     portEXIT_CRITICAL(&stateMux);
 }
 
@@ -222,12 +204,8 @@ void processMavlinkMessage(mavlink_message_t* msg) {
             mavlink_msg_mission_item_reached_decode(msg, &reached);
             portENTER_CRITICAL(&stateMux);
             missionItemReached = true;
-            // Advance the active waypoint index for Haversine tracking
-            if (activeWpIndex < activeWpCount - 1) {
-                activeWpIndex++;
-            }
             portEXIT_CRITICAL(&stateMux);
-            Serial.printf("[MAVLink] MISSION_ITEM_REACHED — seq: %d, activeWpIdx: %d\n", reached.seq, activeWpIndex);
+            Serial.printf("[MAVLink] MISSION_ITEM_REACHED — seq: %d\n", reached.seq);
             break;
         }
         case MAVLINK_MSG_ID_SYS_STATUS: {
@@ -384,18 +362,7 @@ void Mavlink_Task(void *pvParameters) {
             currentSeq = SEQ_IDLE;
         }
 
-        // 5. Compute high-precision Haversine distance to active waypoint
-        if (activeWpCount > 0 && activeWpIndex < activeWpCount) {
-            double liveLat = (double)current_lat_1e7 / 10000000.0;
-            double liveLon = (double)current_lon_1e7 / 10000000.0;
-            double tgtLat  = (double)pendingMission[activeWpIndex].lat;
-            double tgtLon  = (double)pendingMission[activeWpIndex].lon;
-            portENTER_CRITICAL(&stateMux);
-            current_wp_dist = calculateHaversine(liveLat, liveLon, tgtLat, tgtLon);
-            portEXIT_CRITICAL(&stateMux);
-        }
-
-        // 6. Run MechatronicsModule (same core — no cross-core overhead)
+        // 5. Run MechatronicsModule (same core — no cross-core overhead)
         float gs   = Mavlink_GetGroundSpeed();
         float dist = Mavlink_GetDistToWaypoint();
         bool  wpR  = Mavlink_GetWaypointReached();
@@ -440,11 +407,13 @@ void Mavlink_Task(void *pvParameters) {
         if (Network_IsLogging() && (now - lastLogAppend >= 1000)) {
             lastLogAppend = now;
             Network_AppendFlightLog(
-                Mechatronics_GetStateString(),
-                gs,
+                (float)((double)current_lat_1e7 / 10000000.0),
+                (float)((double)current_lon_1e7 / 10000000.0),
                 current_heading_cd / 100.0f,
+                gs,
                 dist,
-                Mechatronics_GetSeedRPM()
+                Mechatronics_GetStateString(),
+                0  // Latency measured client-side; logged as 0 on ESP32
             );
         }
 

@@ -12,7 +12,8 @@ void Network_Task(void *pvParameters);
 void Network_SendTelemetry(const String& json);
 
 // Append a row to the LittleFS flight log CSV (called at 1Hz from Mavlink_Task)
-void Network_AppendFlightLog(const char* state, float speed, float heading, float wpDist, float seedRpm);
+void Network_AppendFlightLog(float lat, float lon, float heading, float speed,
+                             float wpDist, const char* state, int latency);
 
 // Returns true if the operator has toggled data logging ON via the GCS
 bool Network_IsLogging();
