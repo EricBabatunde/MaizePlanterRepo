@@ -117,6 +117,13 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
                             Serial.println("[Network] Flight log STOPPED.");
                         }
                     }
+                    else if (obj["command"] == "PING") {
+                        // Echo back immediately for round-trip latency measurement
+                        unsigned long ts = obj["timestamp"] | 0;
+                        char pong[64];
+                        snprintf(pong, sizeof(pong), "{\"type\":\"PONG\",\"timestamp\":%lu}", ts);
+                        client->text(pong);
+                    }
                 }
             } else {
                 Serial.printf("[Network] JSON Parse failed: %s\n", err.c_str());

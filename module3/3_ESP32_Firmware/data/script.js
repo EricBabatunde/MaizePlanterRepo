@@ -94,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let ws = null;
   let reconnectTimer = null;
   const RECONNECT_DELAY_MS = 3000;
+  let pingIntervalId = null;
 
   /** Establish WebSocket connection to the ESP32. */
   function wsConnect() {
@@ -104,10 +105,17 @@ document.addEventListener('DOMContentLoaded', () => {
       clearTimeout(reconnectTimer);
       updateConnectionUI(true);
       console.log('[WS] Connected to', WS_URL);
+
+      // Start 1Hz PING for latency measurement
+      clearInterval(pingIntervalId);
+      pingIntervalId = setInterval(() => {
+        wsSend({ command: 'PING', timestamp: Date.now() });
+      }, 1000);
     };
     ws.onclose = (ev) => {
       state.wsConnected = false;
       updateConnectionUI(false);
+      clearInterval(pingIntervalId);
       console.warn('[WS] Closed — code:', ev.code, 'reason:', ev.reason);
       scheduleReconnect();
     };
@@ -118,6 +126,14 @@ document.addEventListener('DOMContentLoaded', () => {
     ws.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data);
+
+        // Intercept PONG responses for latency calculation
+        if (data.type === 'PONG' && data.timestamp) {
+          state.ping = Date.now() - data.timestamp;
+          DOM.valLatency.textContent = `${state.ping} ms`;
+          return; // Do not pass PONG into the telemetry handler
+        }
+
         handleTelemetry(data);
       } catch (e) {
         console.warn('[WS] Non-JSON message received:', ev.data);
