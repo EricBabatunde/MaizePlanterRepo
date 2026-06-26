@@ -14,6 +14,10 @@ const char* password = ""; // Open network for easy field access
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
+// --- Flight Log State ---
+static bool flightLogActive = false;
+static File flightLogFile;
+
 // --- WebSocket Event Handler ---
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
              void *arg, uint8_t *data, size_t len) {
@@ -91,6 +95,28 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
                         Mechatronics_StartMission();
                         Serial.println("[Network] MechatronicsModule mission flag SET.");
                     }
+                    else if (obj["command"] == "START_LOG") {
+                        if (!flightLogActive) {
+                            flightLogFile = LittleFS.open("/flight_log.csv", FILE_APPEND);
+                            if (flightLogFile) {
+                                // Write CSV header if file is empty
+                                if (flightLogFile.size() == 0) {
+                                    flightLogFile.println("Timestamp,State,Speed,Heading,DistToWP,SeedRPM");
+                                }
+                                flightLogActive = true;
+                                Serial.println("[Network] Flight log STARTED.");
+                            } else {
+                                Serial.println("[Network] ERROR: Could not open /flight_log.csv");
+                            }
+                        }
+                    }
+                    else if (obj["command"] == "STOP_LOG") {
+                        if (flightLogActive) {
+                            flightLogFile.close();
+                            flightLogActive = false;
+                            Serial.println("[Network] Flight log STOPPED.");
+                        }
+                    }
                 }
             } else {
                 Serial.printf("[Network] JSON Parse failed: %s\n", err.c_str());
@@ -112,6 +138,19 @@ void Network_SendTelemetry(const String& json) {
     if (ws.count() > 0) {
         ws.textAll(json);
     }
+}
+
+// --- Flight Log Append (called at 1Hz from Mavlink_Task) ---
+void Network_AppendFlightLog(const char* state, float speed, float heading, float wpDist, float seedRpm) {
+    if (!flightLogActive || !flightLogFile) return;
+    flightLogFile.printf("%lu,%s,%.2f,%.1f,%.2f,%.1f\n",
+                         millis(), state, speed, heading, wpDist, seedRpm);
+    flightLogFile.flush();
+}
+
+// --- Flight Log Status Getter ---
+bool Network_IsLogging() {
+    return flightLogActive;
 }
 
 void Network_Init() {

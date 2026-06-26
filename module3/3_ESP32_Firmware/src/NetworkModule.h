@@ -10,3 +10,9 @@ void Network_Task(void *pvParameters);
 // Send a JSON telemetry string to all connected WebSocket clients
 // Called internally by the MavlinkModule
 void Network_SendTelemetry(const String& json);
+
+// Append a row to the LittleFS flight log CSV (called at 1Hz from Mavlink_Task)
+void Network_AppendFlightLog(const char* state, float speed, float heading, float wpDist, float seedRpm);
+
+// Returns true if the operator has toggled data logging ON via the GCS
+bool Network_IsLogging();

@@ -29,15 +29,13 @@ document.addEventListener('DOMContentLoaded', () => {
     inputFieldWidth: document.getElementById('inputFieldWidth'),
     inputFieldLength: document.getElementById('inputFieldLength'),
     btnApplyMapScale: document.getElementById('btnApplyMapScale'),
-    inputWaypoints: document.getElementById('inputWaypoints'),
-    btnUploadWaypoints: document.getElementById('btnUploadWaypoints'),
     btnStartMission: document.getElementById('btnStartMission'),
     // Map canvas
     mapCanvas: document.getElementById('mapCanvas'),
     canvasWrapper: document.getElementById('canvasWrapper'),
     // Diagnostics
     btnUTurnTest: document.getElementById('btnUTurnTest'),
-    toggleLogging: document.getElementById('toggleLogging'),
+    toggleLogging: document.getElementById('data-log-switch'),
     loggingStatus: document.getElementById('loggingStatus'),
     btnExportCSV: document.getElementById('btnExportCSV'),
     valLogCount: document.getElementById('valLogCount'),
@@ -65,8 +63,10 @@ document.addEventListener('DOMContentLoaded', () => {
     battery: 0,
     ping: 0,
     seedRPM: 0,
+    gpsFix: 'No Fix',
     // Mission waypoints [{x, y}, ...] for canvas rendering
     waypoints: [],
+    currentWaypointIndex: 0,
     // Data logging
     isLogging: false,
     logBuffer: [],
@@ -167,15 +167,27 @@ document.addEventListener('DOMContentLoaded', () => {
     if (d.batt !== undefined) state.battery = d.batt;
     if (d.ping !== undefined) state.ping = d.ping;
     if (d.seed_rpm !== undefined) state.seedRPM = d.seed_rpm;
+    if (d.gps_fix !== undefined) state.gpsFix = d.gps_fix;
 
     // Parse explicit debug keys (duplicated in C++ for clarity)
     if (d.system_state !== undefined) state.systemState = d.system_state;
     if (d.wp_distance !== undefined) state.wpDist = d.wp_distance;
     if (d.ground_speed !== undefined) state.groundSpeed = d.ground_speed;
 
-    // ── Console State Change Tracker ──────────────────────────────────
+    // ── Console State Change Tracker ──────────────────────────────────────────
     if (state.systemState !== previousState) {
       console.log('====== STATE TRANSITION: ' + previousState + ' -> ' + state.systemState + ' ======');
+
+      // Advance waypoint index when the FSM transitions to RETRACTING
+      // (indicates the planter has reached the end of a row)
+      if (state.systemState === 'RETRACTING' && state.waypoints.length > 0) {
+        // Each row has 2 waypoints (start + end), so advance by 2
+        state.currentWaypointIndex = Math.min(
+          state.currentWaypointIndex + 2,
+          state.waypoints.length - 1
+        );
+      }
+
       previousState = state.systemState;
     }
 
@@ -232,10 +244,16 @@ document.addEventListener('DOMContentLoaded', () => {
     DOM.valLatency.textContent = `${state.ping} ms`;
     DOM.valBattery.textContent = `${state.battery.toFixed(1)} V`;
 
-    // GPS indicator — simple heuristic: fix OK if battery > 0 (i.e. data arriving)
-    const hasFix = state.wsConnected && state.battery > 0;
-    DOM.ledGPS.className = hasFix ? 'led led--fix-ok' : 'led led--no-fix';
-    DOM.valGPS.textContent = hasFix ? 'Fix OK' : 'No Fix';
+    // GPS Fix indicator — colour-coded LED and label from telemetry
+    const fix = state.gpsFix;
+    DOM.valGPS.textContent = fix;
+    if (fix === '3D Fix' || fix === 'DGPS' || fix === 'RTK Float' || fix === 'RTK Fixed') {
+      DOM.ledGPS.className = 'led led--fix-ok';
+    } else if (fix === '2D Fix') {
+      DOM.ledGPS.className = 'led led--fix-2d';
+    } else {
+      DOM.ledGPS.className = 'led led--no-fix';
+    }
   }
 
   // =========================================================================
@@ -426,18 +444,47 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * Draw the planter as a directional triangle.
-   * The incoming telemetry heading is in DEGREES (0–360), already
-   * normalised by handleTelemetry().  Canvas rotate() expects
-   * RADIANS, so we convert here:
-   *   radians = degrees × (Math.PI / 180)
-   * The −90° offset ensures 0° heading points North (up on screen).
+   * Draw the planter as a directional triangle using kinematic
+   * interpolation.  If waypoints exist, the icon position is
+   * calculated by interpolating between the previous and current
+   * waypoints using distToWaypoint telemetry.  During the TURNING
+   * state, the icon snaps to the start of the next row.
    *
-   * ctx.save() / ctx.restore() bracket ALL translate/rotate calls
-   * so the transform matrix is cleanly reset for the next frame.
+   * Fallback: if no waypoints are loaded, uses raw (posX, posY).
    */
   function drawPlanter() {
-    const [px, py] = toCanvas(state.posX, state.posY);
+    let px, py;
+    const wps = state.waypoints;
+    const idx = state.currentWaypointIndex;
+
+    if (wps.length >= 2 && idx > 0 && idx < wps.length) {
+      if (state.systemState === 'TURNING') {
+        // Snap to the start of the next row
+        const nextIdx = Math.min(idx + 1, wps.length - 1);
+        [px, py] = toCanvas(wps[nextIdx].x, wps[nextIdx].y);
+      } else {
+        // Kinematic interpolation along the current segment
+        const wpPrev = wps[idx - 1];
+        const wpCurr = wps[idx];
+        const segDx = wpCurr.x - wpPrev.x;
+        const segDy = wpCurr.y - wpPrev.y;
+        const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+
+        if (segLen > 0.01) {
+          // distToWaypoint is distance REMAINING to wpCurr
+          const travelled = Math.max(0, segLen - state.wpDist);
+          const t = Math.min(1, Math.max(0, travelled / segLen));
+          const interpX = wpPrev.x + segDx * t;
+          const interpY = wpPrev.y + segDy * t;
+          [px, py] = toCanvas(interpX, interpY);
+        } else {
+          [px, py] = toCanvas(wpCurr.x, wpCurr.y);
+        }
+      }
+    } else {
+      // Fallback: use raw telemetry position
+      [px, py] = toCanvas(state.posX, state.posY);
+    }
 
     /* Convert heading from degrees to radians for canvas rotation.
        Subtract 90° so that 0° = North (canvas 0 rad = East).
@@ -499,26 +546,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // =========================================================================
-  // 7. WAYPOINT PARSING
+  // 7. DATA LOGGING & CSV EXPORT
   // =========================================================================
-  /** Parse the waypoints textarea (one "X, Y" pair per line). */
-  function parseWaypointsFromText(text) {
-    const lines = text.trim().split('\n');
-    const wps = [];
-    for (const line of lines) {
-      const cleaned = line.trim();
-      if (!cleaned || cleaned.startsWith('#')) continue; // skip blanks & comments
-      const parts = cleaned.split(/[,\s]+/).map(Number);
-      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-        wps.push({ x: parts[0], y: parts[1] });
-      }
-    }
-    return wps;
-  }
 
-  // =========================================================================
-  // 8. DATA LOGGING & CSV EXPORT
-  // =========================================================================
+
 
   /** Convert the log buffer array into a CSV string. */
   function logBufferToCSV() {
@@ -546,20 +577,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // =========================================================================
-  // 9. EVENT LISTENERS
+  // 8. EVENT LISTENERS
   // =========================================================================
-
-  /* --- Upload Waypoints (manual override — renders on canvas only) --- */
-  DOM.btnUploadWaypoints.addEventListener('click', () => {
-    const wps = parseWaypointsFromText(DOM.inputWaypoints.value);
-    if (wps.length < 2) {
-      console.warn('[Mission] Fewer than 2 waypoints entered. Ignoring.');
-      return;
-    }
-    state.waypoints = wps;
-    renderCanvas();
-    console.log(`[Mission] ${wps.length} manual waypoints rendered on canvas.`);
-  });
 
   /* --- Start Mission ---
      Reads the live GPS origin from telemetry, generates a boustrophedon
@@ -593,6 +612,7 @@ document.addEventListener('DOMContentLoaded', () => {
       x: wp.local_x,
       y: wp.local_y,
     }));
+    state.currentWaypointIndex = 1; // Start interpolating toward WP1
     renderCanvas();
 
     // 5. Package and send the mission to the ESP32
@@ -642,8 +662,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.isLogging) {
       state.logBuffer = [];
       DOM.valLogCount.textContent = '0';
-      console.log('[Logger] Data logging started — buffer cleared.');
+      wsSend({ command: 'START_LOG' });
+      console.log('[Logger] Data logging started — buffer cleared, ESP32 logging enabled.');
     } else {
+      wsSend({ command: 'STOP_LOG' });
       console.log(`[Logger] Data logging stopped — ${state.logBuffer.length} samples captured.`);
     }
   });

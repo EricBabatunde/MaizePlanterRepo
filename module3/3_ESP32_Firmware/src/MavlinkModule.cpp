@@ -65,6 +65,8 @@ static uint16_t current_heading_cd = 0;   // centidegrees
 static float current_speed_ms     = 0.0f;
 static float current_wp_dist      = 0.0f; // metres — from NAV_CONTROLLER_OUTPUT
 static bool missionItemReached    = false; // set by MISSION_ITEM_REACHED msg
+static float   current_batt_v     = 0.0f;  // Battery voltage from SYS_STATUS (V)
+static uint8_t current_gps_fix    = 0;     // GPS fix type from GPS_RAW_INT
 static unsigned long lastTelemetrySent = 0;
 
 // --- Helper function to send a mavlink message ---
@@ -154,6 +156,19 @@ void setPixhawkModeAuto() {
     sendMavlinkMessage(&msg);
 }
 
+// --- GPS Fix Type to Human-Readable String ---
+const char* gpsFixTypeString(uint8_t fix) {
+    switch (fix) {
+        case 0: case 1: return "No Fix";
+        case 2:         return "2D Fix";
+        case 3:         return "3D Fix";
+        case 4:         return "DGPS";
+        case 5:         return "RTK Float";
+        case 6:         return "RTK Fixed";
+        default:        return "Unknown";
+    }
+}
+
 // --- Process Incoming MAVLink Packets ---
 void processMavlinkMessage(mavlink_message_t* msg) {
     switch (msg->msgid) {
@@ -191,6 +206,22 @@ void processMavlinkMessage(mavlink_message_t* msg) {
             missionItemReached = true;
             portEXIT_CRITICAL(&stateMux);
             Serial.printf("[MAVLink] MISSION_ITEM_REACHED — seq: %d\n", reached.seq);
+            break;
+        }
+        case MAVLINK_MSG_ID_SYS_STATUS: {
+            mavlink_sys_status_t sys;
+            mavlink_msg_sys_status_decode(msg, &sys);
+            portENTER_CRITICAL(&stateMux);
+            current_batt_v = sys.voltage_battery / 1000.0f; // mV → V
+            portEXIT_CRITICAL(&stateMux);
+            break;
+        }
+        case MAVLINK_MSG_ID_GPS_RAW_INT: {
+            mavlink_gps_raw_int_t gps;
+            mavlink_msg_gps_raw_int_decode(msg, &gps);
+            portENTER_CRITICAL(&stateMux);
+            current_gps_fix = gps.fix_type;
+            portEXIT_CRITICAL(&stateMux);
             break;
         }
         case MAVLINK_MSG_ID_MISSION_REQUEST: {
@@ -346,7 +377,7 @@ void Mavlink_Task(void *pvParameters) {
             lastTelemetrySent = now;
             
             // Create minimal JSON
-            StaticJsonDocument<384> doc;
+            StaticJsonDocument<512> doc;
             doc["lat"]     = (double)current_lat_1e7 / 10000000.0;
             doc["lon"]     = (double)current_lon_1e7 / 10000000.0;
             doc["heading"] = (float)current_heading_cd / 100.0f;
@@ -362,9 +393,26 @@ void Mavlink_Task(void *pvParameters) {
             doc["wp_distance"]  = current_wp_dist;
             doc["ground_speed"] = current_speed_ms;
 
+            // System vitals
+            doc["batt"]     = current_batt_v;
+            doc["gps_fix"]  = gpsFixTypeString(current_gps_fix);
+
             String json;
             serializeJson(doc, json);
             Network_SendTelemetry(json);
+        }
+
+        // 7. Append Flight Log at 1Hz (if operator has enabled logging)
+        static unsigned long lastLogAppend = 0;
+        if (Network_IsLogging() && (now - lastLogAppend >= 1000)) {
+            lastLogAppend = now;
+            Network_AppendFlightLog(
+                Mechatronics_GetStateString(),
+                gs,
+                current_heading_cd / 100.0f,
+                dist,
+                Mechatronics_GetSeedRPM()
+            );
         }
 
         vTaskDelay(pdMS_TO_TICKS(10)); // Yield to watchdog / other tasks
