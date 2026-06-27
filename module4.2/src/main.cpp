@@ -38,6 +38,20 @@ void setup()
 
 void loop()
 {
+  // 0. Update Drive from Pixhawk (if not E-stopped)
+  if (currentState != E_STOP)
+  {
+    updateDriveFromPixhawk();
+  }
+  else
+  {
+    // Ensure all drive motors are stopped during E-STOP
+    ledcWrite(CH_L_LPWM, 0);
+    ledcWrite(CH_L_RPWM, 0);
+    ledcWrite(CH_R_LPWM, 0);
+    ledcWrite(CH_R_RPWM, 0);
+  }
+
   // 1. Ingest incoming MAVLink packets (Fast as possible)
   receiveMavlink();
 

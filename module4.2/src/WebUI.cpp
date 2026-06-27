@@ -97,10 +97,10 @@ const char index_html[] PROGMEM = R"rawliteral(
 
     window.addEventListener('load', function() {
       try {
-        // Left Joy: Locked to Y-axis (Throttle)
-        var joyL = nipplejs.create({zone: document.getElementById('left-joy'), mode: 'static', position: {left: '50%', top: '50%'}, color: 'cyan', lockX: true});
-        // Right Joy: Locked to X-axis (Steering)
-        var joyR = nipplejs.create({zone: document.getElementById('right-joy'), mode: 'static', position: {left: '50%', top: '50%'}, color: 'magenta', lockY: true});
+        // Left Joy: Locked to Y-axis (Throttle - Up/Down)
+        var joyL = nipplejs.create({zone: document.getElementById('left-joy'), mode: 'static', position: {left: '50%', top: '50%'}, color: 'cyan', lockY: true});
+        // Right Joy: Locked to X-axis (Steering - Left/Right)
+        var joyR = nipplejs.create({zone: document.getElementById('right-joy'), mode: 'static', position: {left: '50%', top: '50%'}, color: 'magenta', lockX: true});
         
         var throttleY = 0.00; var steerX = 0.00;
 

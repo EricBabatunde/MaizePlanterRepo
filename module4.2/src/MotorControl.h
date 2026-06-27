@@ -9,3 +9,6 @@ void setMeterMotor(int speedPWM);
 
 // Returns total system current draw
 float getTotalAmps();
+
+// Reads Pixhawk signals and writes directly to drive motors
+void updateDriveFromPixhawk();

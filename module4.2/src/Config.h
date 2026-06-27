@@ -29,11 +29,18 @@ extern unsigned long jamStartTime;
 extern const int JAM_THRESHOLD_RAW;
 
 // --- Hardware Pins (ESP32-S3) ---
-// (Drive motor pins bypassed in Phase 4.2, but left defined to prevent compile errors)
+// Drive Motors (Active for Phase 4.2 Direct-Drive Passthrough)
 const int PIN_L_LPWM = 11;
 const int PIN_L_RPWM = 12;
 const int PIN_R_LPWM = 13;
 const int PIN_R_RPWM = 14;
+
+// Pixhawk Inputs
+const int PIN_PIX_LEFT = 18;
+const int PIN_PIX_RIGHT = 19;
+
+// Deadzone Constant
+const int DEADZONE = 30;
 
 // Seed Metering Motor
 const int PIN_M_RPWM = 15;
@@ -49,6 +56,10 @@ const int PIN_MAV_RX = 4;
 const int PIN_MAV_TX = 5;
 
 // --- PWM Configuration ---
+const int CH_L_LPWM = 0;
+const int CH_L_RPWM = 1;
+const int CH_R_LPWM = 2;
+const int CH_R_RPWM = 3;
 const int CH_M_R = 4;
 const int CH_M_L = 5;
 const int PWM_FREQ = 22500; // 22.5 kHz (Silent operation)
