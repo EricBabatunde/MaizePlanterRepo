@@ -17,6 +17,7 @@ int targetSteerRC = 1500;
 unsigned long lastTelemetryBroadcast = 0;
 unsigned long lastRCOverride = 0;
 unsigned long lastDataLog = 0;
+unsigned long lastDebugLog = 0;
 
 // --- Meter & Anti-Jam Variables ---
 unsigned long meterStartTime = 0;
@@ -29,7 +30,7 @@ void setup()
 {
   Serial.begin(115200);
   initLogger();
-  initMotors(); // Now ONLY initializes the Seed Metering Motor
+  initMotors(); // Initializes Drive Motors + Seed Metering Motor + Pixhawk Input Pins
   initMavlink();
   initWebUI();
 
@@ -103,6 +104,35 @@ void loop()
     }
 
     lastRCOverride = millis();
+  }
+
+  // 4b. Serial Diagnostic Heartbeat (1Hz)
+  if (millis() - lastDebugLog > 1000)
+  {
+    String stateStr;
+    switch (currentState)
+    {
+      case PIX_MANUAL: stateStr = "PIX_MANUAL"; break;
+      case PIX_AUTO:   stateStr = "PIX_AUTO";   break;
+      case PIX_DISARM: stateStr = "PIX_DISARM"; break;
+      case METER_TEST: stateStr = "METER_TEST"; break;
+      case METER_JAM:  stateStr = "METER_JAM";  break;
+      case E_STOP:     stateStr = "E_STOP";     break;
+      default:         stateStr = "UNKNOWN";    break;
+    }
+
+    Serial.print("[DIAGNOSTIC] State: ");
+    Serial.print(stateStr);
+    Serial.print(" | PixMode: ");
+    Serial.print(currentPixhawkMode);
+    Serial.print(" | Speed: ");
+    Serial.print(currentGroundSpeed, 1);
+    Serial.print("m/s | Intent: Steer=");
+    Serial.print(targetSteerRC);
+    Serial.print(", Throttle=");
+    Serial.println(targetThrottleRC);
+
+    lastDebugLog = millis();
   }
 
   // 5. Independent Seed Meter State Machine (Unchanged, local to ESP32)

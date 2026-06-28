@@ -88,7 +88,7 @@ void updateDriveFromPixhawk()
   int leftIntent = 0;
   if (leftPulse >= 1500)
   {
-    leftIntent = map(constrain(leftPulse, 1500, 2000), 1500, 2000, 0, 255);
+    leftIntent = map(constrain(leftPulse, 1500, 2000), 1500, 2000, 0, 204);
     // Apply deadzone around 1500 for forward motion
     if (leftPulse < 1500 + DEADZONE)
     {
